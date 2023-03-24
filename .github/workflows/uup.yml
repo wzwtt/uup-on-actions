@@ -16,7 +16,7 @@ jobs:
       uses: actions/checkout@main
     - name: Unzip
       run: |
-        7z x ${{ github.event.inputs.file-name }} -o.
+        7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
         uup_download_windows.cmd

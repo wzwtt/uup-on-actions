@@ -19,8 +19,8 @@ jobs:
         7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
-        Import-Module Microsoft.PowerShell.Utility
-        Set-ExecutionPolicy RemoteSigned
+        $env:Path += ";C:\Program Files\PowerShell\Modules\Microsoft.PowerShell.HashUtils\"
+        Get-Command get-filehash
         ./uup_download_windows.cmd
     - name: Upload
       uses: actions/upload-artifact@main

@@ -6,7 +6,7 @@ on:
       file-name:
         description: 'upload the zip package to this repo.'
         required: true
-        default: '*.zip'
+        default: ''
 
 jobs:
   Download:
@@ -19,7 +19,7 @@ jobs:
         7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
-        uup_download_windows.cmd
+        ./uup_download_windows.cmd
     - name: Upload
       uses: actions/upload-artifact@main
       with:

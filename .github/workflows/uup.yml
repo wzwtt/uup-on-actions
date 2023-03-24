@@ -16,7 +16,7 @@ jobs:
       uses: actions/checkout@main
     - name: Unzip
       run: |
-        7z x ${{ github.event.inputs.file-name }} -o./down
+        7z x ${{ github.event.inputs.file-name }} -o.
     - name: run
       run: |
         uup_download_windows.cmd
@@ -24,7 +24,9 @@ jobs:
       uses: actions/upload-artifact@main
       with:
         name: ISO
-        path: ./down/*.iso
+        path: ./*.iso
+        enable-multipart: true
+        
 
         
         

@@ -1,0 +1,36 @@
+name: UUP Download
+
+on:
+  workflow_dispatch:
+    inputs:
+      file-name:
+        description: 'upload the zip package to this repo.'
+        required: true
+        default: ''
+
+jobs:
+  Download:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+    - name: Preparing for the environment
+      run: |
+        sudo apt-get install aria2 unzip cabextract wimtools chntpw genisoimage
+    - name: Unzip
+      run: |
+        unzip ${{ github.event.inputs.file-name }}
+    - name: run
+      run: |
+        sudo chmod 777 uup_download_linux.sh
+        sudo bash uup_download_linux.sh
+    - name: Upload
+      uses: actions/upload-artifact@main
+      with:
+        name: ISO
+        path: ./*.iso
+        enable-multipart: true
+        
+
+        
+        

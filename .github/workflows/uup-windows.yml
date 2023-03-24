@@ -1,4 +1,4 @@
-name: UUP Download
+name: UUP Download Windows
 
 on:
   workflow_dispatch:
@@ -19,8 +19,7 @@ jobs:
         7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
-        $env:Path += ";C:\Program Files\PowerShell\Modules\Microsoft.PowerShell.HashUtils\"
-        Get-Command get-filehash
+        copy depends_win.ps1 ./files /y
         ./uup_download_windows.cmd
     - name: Upload
       uses: actions/upload-artifact@main

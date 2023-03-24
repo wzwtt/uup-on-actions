@@ -1,4 +1,4 @@
-name: UUP Download
+name: UUP Download Ubuntu
 
 on:
   workflow_dispatch:

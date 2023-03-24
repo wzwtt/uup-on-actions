@@ -1,0 +1,30 @@
+name: UUP Download
+
+on:
+  workflow_dispatch:
+    inputs:
+      file-name:
+        description: 'upload the zip package to this repo.'
+        required: true
+        default: '*.zip'
+
+jobs:
+  Download:
+    runs-on: windows-2022
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+    - name: Unzip
+      run: |
+        7z x $github.event.inputs.file-name -o./down
+    - name: run
+      run: |
+        uup_download_windows.cmd
+    - name: Upload
+      uses: actions/upload-artifact@main
+      with:
+        name: ISO
+        path: ./down/*.iso
+
+        
+        

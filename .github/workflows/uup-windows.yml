@@ -21,6 +21,7 @@ jobs:
       run: |
         copy depends_win.ps1 ./files
         ./uup_download_windows.cmd
+        dir /s
     - name: Upload
       uses: actions/upload-artifact@main
       with:

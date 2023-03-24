@@ -24,12 +24,13 @@ jobs:
       run: |
         sudo chmod 777 uup_download_linux.sh
         sudo bash uup_download_linux.sh
+        ls -a
     - name: Upload
       uses: actions/upload-artifact@main
       with:
         name: ISO
         path: ./*.iso
-        enable-multipart: true
+
         
 
         

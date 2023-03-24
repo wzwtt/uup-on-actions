@@ -16,7 +16,7 @@ jobs:
       uses: actions/checkout@main
     - name: Preparing for the environment
       run: |
-        sudo apt-get install aria2 unzip cabextract wimtools chntpw genisoimage
+        sudo apt-get install aria2 zip unzip cabextract wimtools chntpw genisoimage
     - name: Unzip
       run: |
         unzip ${{ github.event.inputs.file-name }}
@@ -30,7 +30,17 @@ jobs:
       with:
         name: ISO
         path: ./*.ISO
-
+    - name: Zip and Upload to WeTransfer
+      run: |
+        mkdir isos
+        zip -r iso.zip *.ISO
+        zip -s 1.9g iso.zip --out ./isos/isos.zip 
+        curl -sL https://git.io/file-transfer | sh 
+        ./transfer wet -s -p 16 --no-progress ./isos/ 2>&1 | tee wetransfer.log
+        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+        echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
+        
+        
         
 
         

@@ -25,8 +25,7 @@ jobs:
       uses: actions/upload-artifact@main
       with:
         name: ISO
-        path: ./*.iso
-        enable-multipart: true
+        path: ./*.ISO
         
 
         

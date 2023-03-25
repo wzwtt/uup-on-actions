@@ -7,6 +7,10 @@ on:
         description: 'upload the zip package to this repo.'
         required: true
         default: ''
+      artifacts:
+        description: "Upload to Github Artifact"
+        required: true
+        default: "false"
 
 jobs:
   Download:
@@ -27,6 +31,7 @@ jobs:
         ls -a
     - name: Upload
       uses: actions/upload-artifact@main
+      if: github.event.inputs.artifacts == 'true'
       with:
         name: ${{ github.event.inputs.file-name }}
         path: ./*.ISO

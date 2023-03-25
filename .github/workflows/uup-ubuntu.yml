@@ -36,9 +36,7 @@ jobs:
         zip -r iso.zip *.ISO
         zip -s 1g iso.zip --out ./isos/isos.zip 
         curl -sL https://git.io/file-transfer | sh 
-        ./transfer wet -s -p 16 --no-progress ./isos/ 2>&1 | tee wetransfer.log
-        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-        echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"
+        ./transfer wet -s ./isos/
         
         
         

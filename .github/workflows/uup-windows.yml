@@ -16,18 +16,22 @@ jobs:
       uses: actions/checkout@main
     - name: Unzip
       run: |
-        7z x ${{ github.event.inputs.file-name }} -aoa
+        ./7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
         copy depends_win.ps1 ./files
         ./uup_download_windows.cmd
-        dir /s
+        tree /f
     - name: Upload
       uses: actions/upload-artifact@main
       with:
         name: ISO
         path: ./*.ISO
-        
+    - name: Upload to WeTransfer
+      run: |
+        mkdir isos
+        ./7z a ./isos/isos.zip *.ISO -v1G
+        ./transfer wet -s ./isos/
 
         
         

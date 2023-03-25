@@ -36,7 +36,7 @@ jobs:
         zip -r iso.zip *.ISO
         zip -s 1g iso.zip --out ./isos/isos.zip 
         curl -sL https://git.io/file-transfer | sh 
-        ./transfer wet -s ./isos/
+        ./transfer wet ./isos/
         
         
         

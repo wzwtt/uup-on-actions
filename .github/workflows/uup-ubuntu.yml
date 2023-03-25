@@ -28,13 +28,14 @@ jobs:
     - name: Upload
       uses: actions/upload-artifact@main
       with:
-        name: ISO
+        name: ${{ github.event.inputs.file-name }}
         path: ./*.ISO
     - name: Zip and Upload to WeTransfer
       run: |
+        sha256sum *.ISO
         mkdir isos
         zip -r iso.zip *.ISO
-        zip -s 1g iso.zip --out ./isos/isos.zip 
+        zip -s 1g iso.zip --out ./isos/${{ github.event.inputs.file-name }}.zip 
         curl -sL https://git.io/file-transfer | sh 
         ./transfer wet ./isos/
         

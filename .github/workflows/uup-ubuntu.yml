@@ -50,6 +50,7 @@ jobs:
       with:
         draft: false
         prerelease: false
+        tag_name: ${{ github.event.inputs.file-name }}
         name: ${{ github.event.inputs.file-name }}
         files: ./isos/*
         

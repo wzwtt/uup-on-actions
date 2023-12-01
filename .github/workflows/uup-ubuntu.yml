@@ -42,7 +42,7 @@ jobs:
         sha256sum *.ISO
         mkdir isos
         zip -r iso.zip *.ISO
-        zip -s 1.9g iso.zip --out ./isos/${{ github.event.inputs.file-name }}.zip 
+        zip -s 2g iso.zip --out ./isos/${{ github.event.inputs.file-name }}.zip 
     - name: Create a release
       uses: softprops/action-gh-release@master
       env:

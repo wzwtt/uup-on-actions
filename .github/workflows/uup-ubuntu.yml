@@ -39,8 +39,9 @@ jobs:
         path: ./*.ISO
     - name: Zip
       run: |
-        sha256sum *.ISO
         mkdir isos
+        sha256sum *.ISO > ./isos/${{ github.event.inputs.file-name }}.sha256
+        cat ./isos/${{ github.event.inputs.file-name }}.sha256
         zip -r iso.zip *.ISO
         zip -s 1g iso.zip --out ./isos/${{ github.event.inputs.file-name }}.zip 
     - name: Create a release
@@ -52,6 +53,7 @@ jobs:
         prerelease: false
         tag_name: ${{ github.event.inputs.file-name }}
         name: ${{ github.event.inputs.file-name }}
+        body_path: ./isos/${{ github.event.inputs.file-name }}.sha256
         files: ./isos/*
         
         

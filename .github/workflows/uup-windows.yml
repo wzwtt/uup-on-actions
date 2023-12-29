@@ -21,7 +21,6 @@ jobs:
       run: |
         copy get_aria2.ps1 ./files
         ./uup_download_windows.cmd
-        tree /f
         ./convert-UUP.cmd
     - name: Upload
       uses: actions/upload-artifact@main

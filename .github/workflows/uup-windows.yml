@@ -17,10 +17,12 @@ jobs:
     - name: Unzip
       run: |
         ./7z x ${{ github.event.inputs.file-name }} -aoa
-    - name: run
+    - name: Download
       run: |
         copy get_aria2.ps1 ./files
         ./uup_download_windows.cmd
+    - name: Convert
+      run: |
         ./convert-UUP.cmd
     - name: Upload
       uses: actions/upload-artifact@main

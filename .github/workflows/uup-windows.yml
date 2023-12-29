@@ -19,7 +19,7 @@ jobs:
         ./7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
-        copy depends_win.ps1 ./files
+        Import-Module microsoft.powershell.utility
         ./uup_download_windows.cmd
         tree /f
     - name: Upload

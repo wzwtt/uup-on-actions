@@ -19,7 +19,7 @@ jobs:
         ./7z x ${{ github.event.inputs.file-name }} -aoa
     - name: run
       run: |
-        Import-Module microsoft.powershell.utility
+        copy get_aria2.ps1 ./files
         ./uup_download_windows.cmd
         tree /f
     - name: Upload

@@ -17,6 +17,11 @@ jobs:
     - name: Unzip
       run: |
         ./7z x ${{ github.event.inputs.file-name }} -aoa
+    - name: Replace powershell with pwsh
+      run: |
+        Get-ChildItem -Recurse -Filter *.cmd | ForEach-Object {
+        (Get-Content $_.FullName) -replace '\bpowershell\b', 'pwsh' | Set-Content $_.FullName
+        }
     - name: Download
       run: |
         ./uup_download_windows.cmd

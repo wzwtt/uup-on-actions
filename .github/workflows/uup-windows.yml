@@ -7,6 +7,10 @@ on:
         description: 'upload the zip package to this repo.'
         required: true
         default: ''
+      artifacts:
+        description: "Upload to Github Artifact"
+        required: true
+        default: "false"
 
 jobs:
   Download:
@@ -27,14 +31,41 @@ jobs:
         ./uup_download_windows.cmd
     - name: Upload
       uses: actions/upload-artifact@main
+      if: github.event.inputs.artifacts == 'true'
       with:
-        name: ISO
-        path: ./*.ISO
-    - name: Upload to WeTransfer
+        name: ${{ github.event.inputs.file-name }}
+        path: .\\*.ISO
+    - name: Zip
+      shell: pwsh
       run: |
-        mkdir isos
-        ./7z a ./isos/isos.zip *.ISO -v1G
-        ./transfer wet -s ./isos/
+        New-Item -ItemType Directory -Path isos | Out-Null
+
+        # SHA256
+        Get-FileHash -Algorithm SHA256 *.ISO |
+          ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
+          Out-File -Encoding ASCII "isos/${{ github.event.inputs.file-name }}.sha256"
+
+        Get-Content "isos/${{ github.event.inputs.file-name }}.sha256"
+
+        # Windows runner includes 7zip (7z)
+        # Create normal ZIP
+        7z a iso.zip *.ISO
+
+        # Create split ZIP files (1GB parts)
+        7z a -v1g "isos/${{ github.event.inputs.file-name }}.zip" *.ISO
+
+    - name: Create a release
+      uses: softprops/action-gh-release@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        draft: false
+        prerelease: false
+        tag_name: ${{ github.event.inputs.file-name }}
+        name: ${{ github.event.inputs.file-name }}
+        body_path: ./isos/${{ github.event.inputs.file-name }}.sha256
+        files: ./isos/*
+
 
         
         

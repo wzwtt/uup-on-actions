@@ -174,7 +174,8 @@ $body -join "`n" | Set-Content -LiteralPath $bodyPath -Encoding UTF8
 # --- 5. create the release -------------------------------------------------------------
 $targetSha = $env:GITHUB_SHA
 if (-not $targetSha) { Fail 'GITHUB_SHA is not set - this script must run inside GitHub Actions' }
-if (-not $env:GITHUB_TOKEN) { Fail 'GITHUB_TOKEN is not set - this script must run inside GitHub Actions' }
+if (-not $env:GH_TOKEN -and -not $env:GITHUB_TOKEN) { Fail 'GH_TOKEN/GITHUB_TOKEN is not set - this script must run inside GitHub Actions' }
+if (-not $env:GH_TOKEN) { $env:GH_TOKEN = $env:GITHUB_TOKEN }
 
 $releaseArgs = @('release', 'create', $tag, '--target', $targetSha, '--title', $tag, '--notes-file', $bodyPath, $sumsPath, $manifestPath)
 if (ConvertTo-Bool ([string]$state.draft)) { $releaseArgs += '--draft' }

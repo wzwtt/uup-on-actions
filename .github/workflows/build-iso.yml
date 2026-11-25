@@ -1,0 +1,223 @@
+name: Build Windows ISO
+
+# Manual (all options) or called by watch.yml (matrix).
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 'latest | latest:<category> | <build number> | <GUID> | uupdump URL'
+        required: true
+        default: 'latest'
+      arch:
+        description: 'amd64 / arm64 / x86'
+        required: true
+        default: 'amd64'
+      language:
+        description: 'uupdump language code (zh-cn, en-us, ...)'
+        required: true
+        default: 'zh-cn'
+      editions:
+        description: 'Comma-separated editions, e.g. professional or professional,core'
+        required: true
+        default: 'professional'
+      virtual_editions:
+        description: 'Comma-separated virtual editions (empty = disabled), e.g. Education,Enterprise,IoTEnterprise'
+        required: false
+        default: ''
+      esd:
+        description: 'Use solid (ESD) compression - smaller ISO, slower conversion'
+        type: boolean
+        required: true
+        default: false
+      mirrors:
+        description: 'Where the ISO is uploaded'
+        type: choice
+        options:
+          - buzzheavier
+          - release+buzzheavier
+        required: true
+        default: buzzheavier
+      dry_run:
+        description: 'Validate the combination only (no download, ~2 min)'
+        type: boolean
+        required: true
+        default: false
+      draft:
+        description: 'Publish the release as a draft'
+        type: boolean
+        required: true
+        default: false
+      options:
+        description: 'Advanced: multi-line Key=Value overrides (see README for the full key list)'
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      build:
+        description: 'latest | latest:<category> | <build number> | <GUID> | uupdump URL'
+        type: string
+        required: true
+        default: 'latest'
+      arch:
+        type: string
+        required: true
+        default: 'amd64'
+      language:
+        type: string
+        required: true
+        default: 'zh-cn'
+      editions:
+        type: string
+        required: true
+        default: 'professional'
+      virtual_editions:
+        type: string
+        required: false
+        default: ''
+      esd:
+        type: boolean
+        required: true
+        default: false
+      mirrors:
+        type: string
+        required: true
+        default: 'buzzheavier'
+      dry_run:
+        type: boolean
+        required: true
+        default: false
+      draft:
+        type: boolean
+        required: true
+        default: false
+      options:
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: uup-${{ inputs.build }}-${{ inputs.arch }}-${{ inputs.language }}-${{ inputs.editions }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ inputs.build }} (${{ inputs.arch }}, ${{ inputs.language }})
+    runs-on: windows-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      UUP_WORK_DIR: D:\uupwork
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # ------------------------------------------------------------------ 1
+      - name: Resolve build
+        id: resolve
+        shell: pwsh
+        timeout-minutes: 10
+        env:
+          UUP_BUILD: ${{ inputs.build }}
+          UUP_ARCH: ${{ inputs.arch }}
+          UUP_LANG: ${{ inputs.language }}
+          UUP_EDITIONS: ${{ inputs.editions }}
+          UUP_VIRTUAL: ${{ inputs.virtual_editions }}
+          UUP_ESD: ${{ inputs.esd }}
+          UUP_MIRRORS: ${{ inputs.mirrors }}
+          UUP_DRYRUN: ${{ inputs.dry_run }}
+          UUP_DRAFT: ${{ inputs.draft }}
+          UUP_OPTIONS: ${{ inputs.options }}
+        run: |
+          $params = @{
+            BuildSpec = $env:UUP_BUILD
+            Arch      = $env:UUP_ARCH
+            Language  = $env:UUP_LANG
+            Editions  = $env:UUP_EDITIONS
+            VirtualEditions = $env:UUP_VIRTUAL
+            Esd       = [bool]::Parse("$env:UUP_ESD".ToLowerInvariant())
+            Mirrors   = $env:UUP_MIRRORS
+            DryRun    = [bool]::Parse("$env:UUP_DRYRUN".ToLowerInvariant())
+            Draft     = [bool]::Parse("$env:UUP_DRAFT".ToLowerInvariant())
+            Options   = $env:UUP_OPTIONS
+          }
+          ./scripts/Resolve-UupBuild.ps1 @params
+
+      # ------------------------------------------------------------------ 2
+      - name: Idempotency check (release already published?)
+        id: check
+        shell: pwsh
+        timeout-minutes: 5
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
+          FORCE_FLAG: ${{ steps.resolve.outputs.force }}
+        run: |
+          $tag = $env:TAG
+          if (-not $tag) { Write-Error 'no tag resolved'; exit 1 }
+          $force = ($env:FORCE_FLAG -eq 'True')
+          $exists = $false
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { $exists = $true }
+          if ($exists -and -not $force) {
+            Write-Output "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Output "Release $tag already exists - skipping (use options force=true to rebuild)."
+            exit 0
+          }
+          if ($exists -and $force) {
+            Write-Output "Force rebuild: deleting existing release $tag"
+            gh release delete $tag --yes
+          }
+          # remove a leftover tag without a release (only when force, or it blocks gh release create)
+          gh api "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" *> $null
+          if ($LASTEXITCODE -eq 0 -and $force) {
+            Write-Output "Deleting leftover tag $tag"
+            gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" *> $null
+          }
+          Write-Output "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Stop summary (already published)
+        if: steps.check.outputs.skip == 'true'
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.resolve.outputs.tag }}"
+          $body = "## Already published`n`nRelease ``$tag`` already exists - nothing was rebuilt. To force a rebuild, set ``force=true`` in the options input.`n"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $body -Encoding utf8
+
+      # ------------------------------------------------------------------ 3
+      - name: Generate download package
+        if: steps.check.outputs.skip != 'true'
+        shell: pwsh
+        timeout-minutes: 15
+        run: ./scripts/New-UupPackage.ps1
+
+      # ------------------------------------------------------------------ 4
+      - name: Download & convert to ISO
+        if: steps.check.outputs.skip != 'true' && inputs.dry_run != true
+        id: convert
+        shell: pwsh
+        timeout-minutes: 330
+        run: ./scripts/Invoke-UupConvert.ps1 -AttemptTimeoutMin 150
+
+      # ------------------------------------------------------------------ 5
+      - name: Publish (buzzheavier + release)
+        if: steps.check.outputs.skip != 'true' && inputs.dry_run != true
+        shell: pwsh
+        timeout-minutes: 200
+        env:
+          UUP_ISO_PATH: ${{ steps.convert.outputs.isoPath }}
+        run: ./scripts/Publish-UupIso.ps1
+
+      # ------------------------------------------------------------------ 6
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: uup-failure-logs-${{ github.run_id }}
+          path: |
+            D:/uupwork/aria2_download.log
+            D:/uupwork/ConvertConfig.ini
+          if-no-files-found: ignore
+          retention-days: 7

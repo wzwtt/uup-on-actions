@@ -1,0 +1,20 @@
+# Temporary / build outputs
+.temp/
+*.ISO
+*.iso
+*.wim
+*.esd
+*.swm
+# uupdump download packages are generated on the runner now - never commit them
+*_convert*.zip
+*_convert_virtual.zip
+uup_package.zip
+UUPs/
+isos/
+aria2_download.log
+buzz_response.json
+release_body.md
+SHA256SUMS.txt
+manifest.json
+# Local test state
+uup-state.json

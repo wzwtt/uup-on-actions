@@ -1,0 +1,190 @@
+<#
+.SYNOPSIS
+Watch phase - decide which builds are new and need to be constructed.
+
+.DESCRIPTION
+Runs inside the scheduled `watch.yml` job (or manual watch dispatch):
+  1. Reads the UUP_WATCH config (repository Variables / built-in default):
+       { "window": "17:00-21:00+0800", "max_parallel": 2,
+         "targets": [ { "build": "latest:w11-25h2", "arch": "amd64",
+                        "language": "zh-cn", "editions": "professional",
+                        "mirrors": "buzzheavier", "options": "" }, ... ] }
+  2. Checks the local time is inside the daily window.
+  3. For every target resolves `latest:<category>` to a concrete build and
+     computes its tag. Targets whose release tag already exists are skipped
+     (idempotent - no state files needed).
+  4. Emits a GitHub Actions matrix for the downstream build jobs.
+
+Failures to resolve a target (e.g. Cloudflare challenge on the list page)
+SKIP that target and continue with the rest - a watch cycle must never
+fail because of transient upstream issues.
+#>
+param(
+    [string]$BypassWindow = 'false'
+)
+
+$ErrorActionPreference = 'Stop'
+$moduleDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Import-Module (Join-Path $moduleDir 'Common.psm1') -Force
+
+Write-Section 'Watch: check for new builds'
+
+# --- default config -------------------------------------------------------------
+$defaultConfig = [ordered]@{
+    window      = '17:00-21:00+0800'
+    max_parallel = 2
+    targets     = @(
+        @{ build = 'latest:w11-25h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' },
+        @{ build = 'latest:w11-24h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' }
+    )
+}
+
+$cfg = $null
+$cfgSource = 'built-in default'
+if ($env:UUP_WATCH_CONFIG -and $env:UUP_WATCH_CONFIG.Trim()) {
+    try {
+        $cfg = ($env:UUP_WATCH_CONFIG | ConvertFrom-Json)
+        $cfgSource = 'repository variable UUP_WATCH'
+    } catch {
+        Fail ("UUP_WATCH variable is not valid JSON: {0}" -f $_.Exception.Message)
+    }
+}
+if (-not $cfg) { $cfg = $defaultConfig }
+
+# --- time window -----------------------------------------------------------------
+if (ConvertTo-Bool $BypassWindow) {
+    Write-Log 'Window check bypassed (manual test run)'
+} else {
+    $win = [string]$cfg.window
+    if ($win -notmatch '^(\d{2}:\d{2})-(\d{2}:\d{2})([+-]\d{4})$') {
+        Fail ("Invalid window format '{0}' - expected e.g. '17:00-21:00+0800'" -f $win)
+    }
+    $startStr = $Matches[1]; $endStr = $Matches[2]; $offset = $Matches[3]
+    $offHours = [int]$offset.Substring(0, 3)
+    $offMin = [int]$offset.Substring(3, 2) * [Math]::Sign($offHours)
+    $now = (Get-Date).ToUniversalTime().AddHours($offHours).AddMinutes($offMin)
+    $nowMin = $now.Hour * 60 + $now.Minute
+    $startMin = ([int]$startStr.Split(':')[0]) * 60 + [int]$startStr.Split(':')[1]
+    $endMin = ([int]$endStr.Split(':')[0]) * 60 + [int]$endStr.Split(':')[1]
+    $inWindow = if ($startMin -le $endMin) { ($nowMin -ge $startMin -and $nowMin -lt $endMin) }
+                 else { ($nowMin -ge $startMin -or $nowMin -lt $endMin) }   # overnight window
+    Write-Log ("Config source: {0}; window {1} (current local time {2:HH:mm})" -f $cfgSource, $win, $now)
+    if (-not $inWindow) {
+        Write-Log 'Outside the daily window - nothing to do.'
+        Write-ActionOutput -Key 'count' -Value '0'
+        Write-ActionOutput -Key 'matrix' -Value '{"include":[]}'
+        Write-Summary '## Watch`n`nOutside the configured time window - no builds this cycle.`n'
+        exit 0
+    }
+}
+
+# --- resolve targets ----------------------------------------------------------------
+$repo = $env:GITHUB_REPOSITORY
+if (-not $repo) { Fail 'GITHUB_REPOSITORY not set - must run inside GitHub Actions' }
+
+$targets = @($cfg.targets)
+if ($targets.Count -eq 0) { Fail 'Watch config has no targets' }
+
+function Test-ReleaseExists {
+    <# On CI: gh api (authoritative - checks the release itself).
+       Locally: git ls-remote against origin (tags are only ever created by
+       `gh release create`, so tag existence == release existence here). #>
+    param([string]$Repo, [string]$Tag)
+    if (Get-Command gh -ErrorAction SilentlyContinue) {
+        & gh api ('repos/{0}/releases/tags/{1}' -f $Repo, $Tag) *> $null
+        return ($LASTEXITCODE -eq 0)
+    }
+    $git = (Get-Command git.exe -ErrorAction SilentlyContinue).Source
+    if (-not $git) {
+        foreach ($p in @('C:\Program Files\Git\cmd\git.exe', 'C:\Program Files (x86)\Git\cmd\git.exe', "$env:LOCALAPPDATA\Programs\Git\cmd\git.exe")) {
+            if (Test-Path $p) { $git = $p; break }
+        }
+    }
+    if ($git) {
+        $out = & $git ls-remote --tags origin ('refs/tags/{0}' -f $Tag) 2>$null
+        return ($null -ne $out -and (@($out).Count -gt 0) -and (("$out" | Out-String).Trim() -ne ''))
+    }
+    Fail 'Neither gh nor git is available to check existing releases'
+}
+
+$include = @()
+foreach ($t in $targets) {
+    $spec = [string]$t.build
+    $arch = if ($t.arch) { [string]$t.arch } else { 'amd64' }
+    $language = if ($t.language) { [string]$t.language } else { 'zh-cn' }
+    $editions = if ($t.editions) { [string]$t.editions } else { 'professional' }
+    $virtual = if ($t.virtual_editions) { [string]$t.virtual_editions } else { '' }
+    $esd = if ($t.esd) { [string]$t.esd } else { 'false' }
+    $mirrors = if ($t.mirrors) { [string]$t.mirrors } else { 'buzzheavier' }
+    $options = if ($t.options) { [string]$t.options } else { '' }
+    $draft = if ($t.draft) { [string]$t.draft } else { 'false' }
+
+    Write-Log ("Target: {0} (arch={1}, lang={2}, editions={3})" -f $spec, $arch, $language, $editions)
+    try {
+        $found = Find-UupBuild -Spec $spec -Arch $arch
+    } catch {
+        Write-LogWarn ("Could not resolve '{0}' this cycle: {1} - skipping target" -f $spec, $_.Exception.Message)
+        continue
+    }
+    if (-not $found.build) {
+        Write-LogWarn ("Build number for '{0}' could not be determined - skipping target" -f $spec)
+        continue
+    }
+
+    $editionsList = ConvertTo-List $editions
+    $virtualList = @(ConvertTo-List $virtual)
+    $optionsMap = ConvertFrom-OptionsText $options
+    $defaults = Get-UupDefaultOptions
+    $finalOptions = Merge-UupOptions -Defaults $defaults -EsdInput $esd -UserOptions $optionsMap
+    $tagSuffix = ''
+    if ($optionsMap.Contains('tag_suffix')) { $tagSuffix = [string]$optionsMap['tag_suffix'] }
+    $tag = Get-UupTag -Build $found.build -Arch $arch -Language $language -Editions $editionsList `
+        -VirtualEditions $virtualList -FinalOptions $finalOptions -TagSuffix $tagSuffix
+
+    # idempotency: does the release already exist?
+    $exists = Test-ReleaseExists -Repo $repo -Tag $tag
+    if ($exists) {
+        Write-Log ("  -> {0}: already published, skipping" -f $tag)
+        continue
+    }
+    Write-Log ("  -> {0}: NEW, queueing build" -f $tag)
+    $include += [ordered]@{
+        build            = $spec
+        arch             = $arch
+        language         = $language
+        editions         = $editions
+        virtual_editions = $virtual
+        esd              = $esd
+        mirrors          = $mirrors
+        options          = $options
+        draft            = $draft
+        tag              = $tag
+        title            = $found.title
+    }
+}
+
+$count = [string]$include.Count
+$matrixJson = (@{ include = $include } | ConvertTo-Json -Depth 8 -Compress)
+$maxParallel = [string]$cfg.max_parallel
+if (-not $maxParallel) { $maxParallel = '2' }
+
+Write-ActionOutput -Key 'count' -Value $count
+Write-ActionOutput -Key 'matrix' -Value $matrixJson
+Write-ActionOutput -Key 'max_parallel' -Value $maxParallel
+
+Write-Log ("New builds this cycle: {0}" -f $count)
+if ($count -ne '0') {
+    foreach ($i in $include) { Write-Log ("  queue: {0} ({1})" -f $i.tag, $i.title) }
+}
+
+$summary = "## Watch cycle`n`nConfig source: **{0}**`n`nNew builds: **{1}**`n`n" -f $cfgSource, $count
+if ($include.Count -gt 0) {
+    $summary += "| Tag | Target | Title |`n|---|---|---|`n"
+    foreach ($i in $include) {
+        $summary += ("| `{0}` | `{1}` | {2} |`n" -f $i.tag, $i.build, $i.title)
+    }
+} else {
+    $summary += "Nothing new to build.`n"
+}
+Write-Summary $summary
+exit 0

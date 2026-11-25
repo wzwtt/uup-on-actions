@@ -41,6 +41,10 @@ function Invoke-DownloadScript {
     $psi.Arguments = '/c ""' + $cmdPath + '""'
     $psi.WorkingDirectory = $WorkDir
     $psi.UseShellExecute = $false
+    # Drop the PS7 PSModulePath inherited from the pwsh workflow step: it
+    # breaks Windows PowerShell 5.1 child sessions (cmdlet autoloading fails,
+    # e.g. Get-FileHash inside convert-UUP.cmd / get_aria2.ps1).
+    try { $psi.EnvironmentVariables.Remove('PSModulePath') } catch { }
 
     $p = New-Object System.Diagnostics.Process
     $p.StartInfo = $psi

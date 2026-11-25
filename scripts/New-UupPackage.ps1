@@ -128,9 +128,14 @@ $cmd = $cmd -replace '(?m)(^cd /d "%~dp0"\r?$)', "`$1`r`ngoto :START_PROCESS"
 # 2. replace every interactive `pause` with a log line (keeps `& exit /b 1`
 #    chains intact - `rem` would swallow them)
 $cmd = $cmd -replace '\bpause\b', 'echo [uup-auto] pause skipped'
+# 3. use pwsh instead of Windows PowerShell 5.1. Not cosmetic: this step runs
+#    inside a pwsh (PS7) workflow step whose PSModulePath (PS7 module dirs)
+#    leaks into child powershell.exe sessions, breaking cmdlet autoloading
+#    there (get_aria2.ps1 dies with "Get-FileHash: command not found").
+$cmd = $cmd -replace '(?m)\bpowershell\b', 'pwsh'
 Set-Content -LiteralPath $cmdPath -Value $cmd -Encoding Default
 if ($cmd -notmatch 'goto :START_PROCESS') { Fail 'Failed to inject the START_PROCESS jump into uup_download_windows.cmd' }
-Write-LogOk 'uup_download_windows.cmd patched (no UAC prompt, no interactive pause)'
+Write-LogOk 'uup_download_windows.cmd patched (no UAC prompt, no interactive pause, pwsh)'
 
 # --- pre-flight (dry-run only) --------------------------------------------------
 if ($dryRun) {

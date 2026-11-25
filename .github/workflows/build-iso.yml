@@ -155,6 +155,7 @@ jobs:
           TAG: ${{ steps.resolve.outputs.tag }}
           FORCE_FLAG: ${{ steps.resolve.outputs.force }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $tag = $env:TAG
           if (-not $tag) { Write-Error 'no tag resolved'; exit 1 }
           $force = ($env:FORCE_FLAG -eq 'True')
@@ -162,7 +163,7 @@ jobs:
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { $exists = $true }
           if ($exists -and -not $force) {
-            Write-Output "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "skip=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             Write-Output "Release $tag already exists - skipping (use options force=true to rebuild)."
             exit 0
           }
@@ -170,13 +171,15 @@ jobs:
             Write-Output "Force rebuild: deleting existing release $tag"
             gh release delete $tag --yes
           }
-          # remove a leftover tag without a release (only when force, or it blocks gh release create)
+          # remove a leftover tag without a release (only meaningful when force)
           gh api "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" *> $null
           if ($LASTEXITCODE -eq 0 -and $force) {
             Write-Output "Deleting leftover tag $tag"
             gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" *> $null
           }
-          Write-Output "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "skip=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Output "No existing release for $tag - proceeding."
+          exit 0
 
       - name: Stop summary (already published)
         if: steps.check.outputs.skip == 'true'
@@ -185,6 +188,7 @@ jobs:
           $tag = "${{ steps.resolve.outputs.tag }}"
           $body = "## Already published`n`nRelease ``$tag`` already exists - nothing was rebuilt. To force a rebuild, set ``force=true`` in the options input.`n"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $body -Encoding utf8
+          exit 0
 
       # ------------------------------------------------------------------ 3
       - name: Generate download package

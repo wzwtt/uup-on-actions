@@ -1,0 +1,86 @@
+name: Watch new builds
+
+# Periodically checks whether the monitored uupdump categories have a new
+# full Windows build and triggers Build Windows ISO for each new one.
+# The monitoring configuration (daily time window, concurrency limit and
+# target list) is version-controlled on the `watch` orphan branch; each
+# cycle fetches uup-watch.json from that branch (built-in defaults apply
+# when the branch or the file is absent).
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'   # wake up every 2h; the script gates on the window
+  workflow_dispatch:
+    inputs:
+      bypass_window:
+        description: 'Run outside the configured window (testing)'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write   # required so the called build workflow can create releases
+
+jobs:
+  plan:
+    name: Check for new builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      count: ${{ steps.watch.outputs.count }}
+      matrix: ${{ steps.watch.outputs.matrix }}
+      max_parallel: ${{ steps.watch.outputs.max_parallel }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Fetch monitoring configuration
+        shell: pwsh
+        run: |
+          git fetch --depth=1 origin watch
+          if ($LASTEXITCODE -eq 0) {
+            git show origin/watch:uup-watch.json > $env:RUNNER_TEMP/uup-watch.json
+            if ($LASTEXITCODE -eq 0) {
+              "WATCH_CONFIG=$env:RUNNER_TEMP/uup-watch.json" >> $env:GITHUB_ENV
+            } else {
+              Write-Warning 'uup-watch.json not found on the watch branch - built-in defaults apply'
+            }
+          } else {
+            Write-Warning 'watch branch not found - built-in defaults apply'
+          }
+
+      - name: Watch
+        id: watch
+        shell: pwsh
+        timeout-minutes: 15
+        env:
+          UUP_WATCH_FILE: ${{ env.WATCH_CONFIG }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_BYPASS: ${{ inputs.bypass_window }}
+        run: |
+          $bypass = if ($env:GITHUB_BYPASS -eq 'true' -or $env:GITHUB_BYPASS -eq 'True') { 'true' } else { 'false' }
+          ./scripts/Watch-UupBuilds.ps1 -BypassWindow $bypass
+
+  build:
+    name: ${{ matrix.tag }}
+    needs: plan
+    if: needs.plan.outputs.count != '0' && needs.plan.outputs.count != ''
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(needs.plan.outputs.max_parallel) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    uses: ./.github/workflows/build-iso.yml
+    with:
+      build: ${{ matrix.build }}
+      arch: ${{ matrix.arch }}
+      language: ${{ matrix.language }}
+      editions: ${{ matrix.editions }}
+      virtual_editions: ${{ matrix.virtual_editions }}
+      esd: ${{ matrix.esd == 'true' }}
+      mirrors: ${{ matrix.mirrors }}
+      options: ${{ matrix.options }}
+      dry_run: false
+      draft: ${{ matrix.draft == 'true' }}
+    permissions:
+      contents: write

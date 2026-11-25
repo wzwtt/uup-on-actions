@@ -33,16 +33,14 @@ $state = Get-State
 $tag = $state.tag
 
 function Invoke-DownloadScript {
-    <# Runs the cmd with a timeout; returns the exit code, or 'TIMEOUT'. #>
+    <# Runs the cmd with a timeout; returns the exit code, or 'TIMEOUT'.
+       stdout/stderr are inherited (NOT redirected) so every line of the
+       uupdump script lands directly in the Actions step log. #>
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'cmd.exe'
     $psi.Arguments = '/c ""' + $cmdPath + '""'
     $psi.WorkingDirectory = $WorkDir
     $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding(437)
-    $psi.StandardErrorEncoding = [System.Text.Encoding]::GetEncoding(437)
 
     $p = New-Object System.Diagnostics.Process
     $p.StartInfo = $psi

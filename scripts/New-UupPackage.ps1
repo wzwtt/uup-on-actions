@@ -156,6 +156,66 @@ if ($dryRun) {
     exit 0
 }
 
+# --- pre-fetch the runtime dependencies ----------------------------------------------
+# uup_download_windows.cmd normally downloads aria2c.exe (via get_aria2.ps1)
+# and the converter binaries on first run; those first-hop downloads are the
+# flaky part behind CDNs. Pre-fetch everything here (with retry/backoff and
+# hash verification) so the cmd scripts only ever verify & skip.
+Write-Section 'Pre-fetch runtime dependencies'
+$filesDir = Join-Path $WorkDir 'files'
+
+# 1) aria2c.exe - URL and expected sha256 come from the package's own
+#    get_aria2.ps1, so the version always matches what the cmd script expects.
+$gaPath = Join-Path $filesDir 'get_aria2.ps1'
+$aria2Target = Join-Path $filesDir 'aria2c.exe'
+if (Test-Path -LiteralPath $gaPath) {
+    $ga = Get-Content -LiteralPath $gaPath -Raw
+    $aria2Url = [regex]::Match($ga, 'https?://[^\s''"]+aria2c\.exe').Value
+    $aria2Hash = [regex]::Match($ga, '\$hash\s*=\s*''([0-9a-fA-F]{64})''').Groups[1].Value
+    if (-not $aria2Url) { $aria2Url = 'https://uupdump.net/misc/aria2c.exe' }
+    $resp = Invoke-UupRequest -Uri $aria2Url -Warmup
+    [System.IO.File]::WriteAllBytes($aria2Target, $resp.RawContentStream.ToArray())
+    $dlHash = Get-FileSha256 $aria2Target
+    if ($aria2Hash -and ($dlHash -ne $aria2Hash.ToLowerInvariant())) {
+        Fail ("aria2c.exe hash mismatch after download (expected {0}, got {1})" -f $aria2Hash, $dlHash)
+    }
+    Write-LogOk ("aria2c.exe pre-fetched and verified ({0} bytes)" -f (Get-Item $aria2Target).Length)
+} else {
+    Write-LogWarn 'get_aria2.ps1 not found in package - skipping aria2 pre-fetch'
+}
+
+# 2) converter binaries listed in files/converter_windows (aria2 input list)
+$convListPath = Join-Path $filesDir 'converter_windows'
+if (Test-Path -LiteralPath $convListPath) {
+    $convEntries = @()
+    foreach ($line in (Get-Content -LiteralPath $convListPath)) {
+        $t = $line.Trim()
+        if (-not $t) { continue }
+        if ($t -match '^(https?://.+)$') { $convEntries += [pscustomobject]@{ url = $Matches[1]; out = ''; sum = '' } }
+        elseif ($convEntries.Count -gt 0) {
+            if ($t -match '^out=(.+)$') { $convEntries[-1].out = $Matches[1] }
+            elseif ($t -match '^checksum=sha-256=([0-9a-fA-F]{64})') { $convEntries[-1].sum = $Matches[1].ToLowerInvariant() }
+        }
+    }
+    foreach ($e in $convEntries) {
+        if (-not $e.url -or -not $e.out) { continue }
+        $target = Join-Path $filesDir $e.out
+        if ((Test-Path -LiteralPath $target) -and $e.sum -and ((Get-FileSha256 $target) -eq $e.sum)) {
+            Write-Log ("{0} already present, hash OK - skipping" -f $e.out)
+            continue
+        }
+        Write-Log ("Pre-fetching {0}..." -f $e.out)
+        $r2 = Invoke-UupRequest -Uri $e.url
+        [System.IO.File]::WriteAllBytes($target, $r2.RawContentStream.ToArray())
+        if ($e.sum -and ((Get-FileSha256 $target) -ne $e.sum)) {
+            Fail ("{0} hash mismatch after download (expected {1})" -f $e.out, $e.sum)
+        }
+        Write-LogOk ("{0} pre-fetched ({1} bytes)" -f $e.out, (Get-Item $target).Length)
+    }
+} else {
+    Write-LogWarn 'files/converter_windows not found - converter binaries left to the cmd script'
+}
+
 # --- disk space check ----------------------------------------------------------
 $workDrive = (Get-Item $WorkDir).PSDrive
 $freeGb = [Math]::Round($workDrive.Free / 1GB, 1)

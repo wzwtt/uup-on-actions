@@ -1,0 +1,28 @@
+{
+  "window": "17:00-21:00+0800",
+  "max_parallel": 2,
+  "targets": [
+    {
+      "build": "latest:w11-25h2",
+      "arch": "amd64",
+      "language": "zh-cn",
+      "editions": "professional",
+      "virtual_editions": "",
+      "esd": "false",
+      "mirrors": "buzzheavier",
+      "options": "",
+      "draft": "false"
+    },
+    {
+      "build": "latest:w11-24h2",
+      "arch": "amd64",
+      "language": "zh-cn",
+      "editions": "professional,core",
+      "virtual_editions": "",
+      "esd": "false",
+      "mirrors": "buzzheavier",
+      "options": "",
+      "draft": "false"
+    }
+  ]
+}

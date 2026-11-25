@@ -49,8 +49,9 @@ if ($state.mirrors -eq 'buzzheavier' -or $state.mirrors -eq 'release+buzzheavier
     $uploadUrl = ('https://w.buzzheavier.com/{0}' -f $remoteName)
     $respPath = Join-Path $outDir 'buzz_response.json'
 
-    $curl = (Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue).Source
-    if (-not $curl) { $curlError = 'curl.exe not found'; }
+    $curlCmds = @(Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue)
+    if ($curlCmds.Count -eq 0) { Fail 'curl.exe not found on PATH' }
+    $curl = $curlCmds[0].Source   # first match (Windows system curl.exe)
     $maxUploadAttempts = 2
     for ($attempt = 1; $attempt -le $maxUploadAttempts; $attempt++) {
         if ($attempt -gt 1) { Write-Log 'Re-trying buzzheavier upload (from scratch - no resume support)...'; Start-Sleep -Seconds 15 }

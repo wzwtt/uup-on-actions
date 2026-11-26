@@ -3,26 +3,70 @@
   "max_parallel": 2,
   "targets": [
     {
-      "build": "w11-25h2",
+      "build": "retail",
       "arch": "amd64",
       "language": "zh-cn",
-      "editions": "professional",
-      "virtual_editions": "",
+      "editions": "all",
+      "virtual_editions": "all",
       "esd": "false",
       "mirrors": "buzzheavier",
       "options": "",
-      "draft": "false"
+      "release_state": "release"
     },
     {
-      "build": "w11-24h2",
+      "build": "retail",
       "arch": "amd64",
-      "language": "zh-cn",
-      "editions": "professional,core",
-      "virtual_editions": "",
+      "language": "en-us",
+      "editions": "all",
+      "virtual_editions": "all",
       "esd": "false",
       "mirrors": "buzzheavier",
       "options": "",
-      "draft": "false"
+      "release_state": "release"
+    },
+    {
+      "build": "rp",
+      "arch": "amd64",
+      "language": "zh-cn",
+      "editions": "all",
+      "virtual_editions": "all",
+      "esd": "false",
+      "mirrors": "buzzheavier",
+      "options": "",
+      "release_state": "release"
+    },
+    {
+      "build": "rp",
+      "arch": "amd64",
+      "language": "en-us",
+      "editions": "all",
+      "virtual_editions": "all",
+      "esd": "false",
+      "mirrors": "buzzheavier",
+      "options": "",
+      "release_state": "release"
+    },
+    {
+      "build": "beta",
+      "arch": "amd64",
+      "language": "zh-cn",
+      "editions": "all",
+      "virtual_editions": "all",
+      "esd": "false",
+      "mirrors": "buzzheavier",
+      "options": "",
+      "release_state": "prerelease"
+    },
+    {
+      "build": "beta",
+      "arch": "amd64",
+      "language": "en-us",
+      "editions": "all",
+      "virtual_editions": "all",
+      "esd": "false",
+      "mirrors": "buzzheavier",
+      "options": "",
+      "release_state": "prerelease"
     }
   ]
 }

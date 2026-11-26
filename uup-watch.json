@@ -3,7 +3,7 @@
   "max_parallel": 2,
   "targets": [
     {
-      "build": "latest:w11-25h2",
+      "build": "w11-25h2",
       "arch": "amd64",
       "language": "zh-cn",
       "editions": "professional",
@@ -14,7 +14,7 @@
       "draft": "false"
     },
     {
-      "build": "latest:w11-24h2",
+      "build": "w11-24h2",
       "arch": "amd64",
       "language": "zh-cn",
       "editions": "professional,core",

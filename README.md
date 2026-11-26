@@ -303,7 +303,7 @@ Each queued target becomes a separate build job and therefore a separate runner;
 
 Once every build job has finished — successfully or not — an aggregation job collects the outcomes and writes one table to the run summary: for each planned target, the release state (`release` / `prerelease` / `draft`, or not published) and the release link. A tag that is absent from the table's published states indicates that its build did not complete; the corresponding job log carries the reason.
 
-Manual invocation of the watch workflow accepts a `bypass_window` input that disables the window check for testing.
+Manual invocation accepts two inputs: `bypass_window` (default `true` for manual runs, so a manual cycle acts immediately instead of waiting for the window) and `plan_only` (default `false`), which resolves and reports the targets in the run summary without dispatching builds. Scheduled cycles always respect the window; when one runs outside it, the summary states the window and the current local time, and a warning annotation is added to the run.
 
 ## Published artifacts
 

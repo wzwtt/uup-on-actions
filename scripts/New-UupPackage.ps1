@@ -138,25 +138,44 @@ if ($cmd -notmatch 'goto :START_PROCESS') { Fail 'Failed to inject the START_PRO
 Write-LogOk 'uup_download_windows.cmd patched (no UAC prompt, no interactive pause, pwsh)'
 
 # --- pre-flight (dry-run only) --------------------------------------------------
+# api.uupdump.net/get.php accepts exactly one edition per request; a
+# semicolon-separated list is rejected with HTTP 400. Multi-edition builds are
+# therefore verified edition by edition. Every listing contains the files
+# shared between editions, so sizes are reported per edition instead of summed.
 if ($dryRun) {
     Write-Section 'Pre-flight check (dry-run)'
-    $apiUri = ('https://api.uupdump.net/get.php?id={0}&lang={1}&edition={2}' -f $guid, $language, $editionQuery)
-    try {
-        $api = Invoke-UupApi -Uri $apiUri
-        $txt = [string]$api.Content
-        if ($txt -match '"error"') {
-            $errTxt = [regex]::Match($txt, '"error"\s*:\s*"(.*?)"').Groups[1].Value
-            Fail ("Pre-flight: uupdump API reports an error for this combination: {0}" -f $errTxt)
+    $probeLimit = 6
+    $probeEditions = @($editions | Select-Object -First $probeLimit)
+    $rows = @()
+    foreach ($ed in $probeEditions) {
+        $apiUri = ('https://api.uupdump.net/get.php?id={0}&lang={1}&edition={2}' -f $guid, $language, $ed)
+        try {
+            $api = Invoke-UupApi -Uri $apiUri
+            $txt = [string]$api.Content
+            if ($txt -match '"error"') {
+                $errTxt = [regex]::Match($txt, '"error"\s*:\s*"(.*?)"').Groups[1].Value
+                Fail ("Pre-flight: uupdump API reports an error for edition '{0}': {1}" -f $ed, $errTxt)
+            }
+            $sizes = [regex]::Matches($txt, '"size"\s*:\s*"(\d+)"') | ForEach-Object { [long]$_.Groups[1].Value }
+            $fileCount = ([regex]::Matches($txt, '"sha256"\s*:')).Count
+            $gb = [Math]::Round((($sizes | Measure-Object -Sum).Sum) / 1GB, 2)
+            $rows += [pscustomobject]@{ Edition = $ed; Files = $fileCount; SizeGb = $gb }
+            Write-Log ("Pre-flight OK: edition '{0}' - {1} files, ~{2} GB" -f $ed, $fileCount, $gb)
+        } catch {
+            Write-LogWarn ("Pre-flight API check failed for edition '{0}' ({1}) - reporting as unverified. The download itself verifies server-side." -f $ed, $_.Exception.Message)
+            $rows += [pscustomobject]@{ Edition = $ed; Files = 'n/a'; SizeGb = 'n/a' }
         }
-        $sizes = [regex]::Matches($txt, '"size"\s*:\s*"(\d+)"') | ForEach-Object { [long]$_.Groups[1].Value }
-        $fileCount = ([regex]::Matches($txt, '"sha256"\s*:')).Count
-        $totalGb = [Math]::Round((($sizes | Measure-Object -Sum).Sum) / 1GB, 2)
-        Write-LogOk ("Pre-flight OK: {0} files, ~{1} GB total download from Microsoft CDN" -f $fileCount, $totalGb)
-        Write-Summary ("## Dry-run result`n`nCombination is valid.`n`n| Check | Value |`n|---|---|`n| Files | {0} |`n| Estimated download | ~{1} GB |`n| Tag | `{2}` |`n`nDry-run stops here - no download/conversion performed.`n" -f $fileCount, $totalGb, $state.tag)
-    } catch {
-        Write-LogWarn ("Pre-flight API check failed ({0}) - treating as warning only. The real download would still verify server-side." -f $_.Exception.Message)
-        Write-Summary ("## Dry-run result`n`nPackage generated successfully (form accepted). API pre-flight check could not complete: {0}`n" -f $_.Exception.Message)
+        Start-Sleep -Seconds 5
     }
+
+    $note = if ($editions.Count -gt $probeEditions.Count) {
+        "`nOnly the first {0} of {1} editions were queried.`n" -f $probeEditions.Count, $editions.Count
+    } else { '' }
+    $table = "| Edition | Files | Estimated download |`n|---|---|---|`n"
+    foreach ($row in $rows) {
+        $table += ('| {0} | {1} | ~{2} GB |' -f $row.Edition, $row.Files, $row.SizeGb) + "`n"
+    }
+    Write-Summary ("## Dry-run result`n`nThe combination was accepted by uupdump (download package generated). Payload estimates, per edition:`n`n{0}`nShared files appear in each edition's listing, so the per-edition sizes are not additive.{1}`n| Tag | `{2}` |`n`nDry-run stops here - no download or conversion performed.`n" -f $table, $note, $state.tag)
     Write-LogOk 'Phase 2 complete (dry-run)'
     exit 0
 }

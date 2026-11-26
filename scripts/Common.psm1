@@ -296,9 +296,20 @@ function Invoke-UupApi {
             return Invoke-WebRequest -UseBasicParsing -Uri $Uri -TimeoutSec $TimeoutSec `
                 -Headers @{ 'User-Agent' = $script:UupUserAgent; 'Accept' = 'application/json' }
         } catch {
+            $bodyText = Get-HttpErrorBody $_
+            $statusCode = Get-HttpStatusCode $_
+
+            # non-429 client errors carry the API's own explanation - report it
+            # instead of repeating an identical request
+            if ($statusCode -ge 400 -and $statusCode -lt 500 -and $statusCode -ne 429) {
+                $apiErr = [regex]::Match([string]$bodyText, '"error"\s*:\s*"(.*?)"').Groups[1].Value
+                if ($apiErr) { Fail ("API rejected the request (HTTP {0}): {1}" -f $statusCode, $apiErr) }
+                Fail ("API request {0} failed with HTTP {1} (client error - not retried)" -f $Uri, $statusCode)
+            }
+
             if ($attempt -gt $Retries) { Fail ("API request {0} failed after {1} attempts: {2}" -f $Uri, $attempt, $_.Exception.Message) }
             $wait = if ($attempt -le $delays.Count) { $delays[$attempt - 1] } else { 60 }
-            Write-LogWarn ("API attempt {0} failed ({1}); retrying in {2}s..." -f $attempt, $_.Exception.Message, $wait)
+            Write-LogWarn ("API attempt {0} failed (HTTP {1}); retrying in {2}s..." -f $attempt, $statusCode, $wait)
             Start-Sleep -Seconds $wait
         }
     }

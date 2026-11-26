@@ -81,6 +81,6 @@ jobs:
       mirrors: ${{ matrix.mirrors }}
       options: ${{ matrix.options }}
       dry_run: false
-      draft: ${{ matrix.draft == 'true' }}
+      release_state: ${{ matrix.release_state }}
     permissions:
       contents: write

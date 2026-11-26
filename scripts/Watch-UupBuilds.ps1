@@ -8,8 +8,10 @@ Runs inside the scheduled `watch.yml` job (or manual watch dispatch):
      workflow (fetched from the `watch` orphan branch); a missing file or
      branch falls back to the built-in defaults:
         { "window": "17:00-21:00+0800", "max_parallel": 2,
-          "targets": [ { "build": "w11-25h2", "arch": "amd64",
-                         "language": "zh-cn", "editions": "professional" }, ... ] }
+          "targets": [ { "build": "retail", "arch": "amd64",
+                         "language": "zh-cn", "editions": "all",
+                         "virtual_editions": "all",
+                         "release_state": "release" }, ... ] }
   2. Checks the local time is inside the daily window.
   3. For every target resolves the build spec (category / ring / category@ring)
      to a concrete build and
@@ -38,8 +40,8 @@ $defaultConfig = [ordered]@{
     window      = '17:00-21:00+0800'
     max_parallel = 2
     targets     = @(
-        @{ build = 'w11-25h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' },
-        @{ build = 'w11-24h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' }
+        @{ build = 'retail'; arch = 'amd64'; language = 'zh-cn'; editions = 'all'; virtual_editions = 'all'; release_state = 'release' },
+        @{ build = 'retail'; arch = 'amd64'; language = 'en-us'; editions = 'all'; virtual_editions = 'all'; release_state = 'release' }
     )
 }
 
@@ -126,7 +128,10 @@ foreach ($t in $targets) {
     $esd = if ($t.esd) { [string]$t.esd } else { 'false' }
     $mirrors = if ($t.mirrors) { [string]$t.mirrors } else { 'buzzheavier' }
     $options = if ($t.options) { [string]$t.options } else { '' }
-    $draft = if ($t.draft) { [string]$t.draft } else { 'false' }
+    $releaseState = if ($t.release_state) { ([string]$t.release_state).Trim().ToLowerInvariant() } else { 'release' }
+    if ($releaseState -notin @('release', 'prerelease', 'draft')) {
+        Fail ("Target '{0}': invalid release_state '{1}' (expected release / prerelease / draft)" -f $spec, $t.release_state)
+    }
 
     Write-Log ("Target: {0} (arch={1}, lang={2}, editions={3})" -f $spec, $arch, $language, $editions)
     try {
@@ -166,7 +171,7 @@ foreach ($t in $targets) {
         esd              = $esd
         mirrors          = $mirrors
         options          = $options
-        draft            = $draft
+        release_state    = $releaseState
         tag              = $tag
         title            = $found.title
     }

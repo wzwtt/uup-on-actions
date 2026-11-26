@@ -88,11 +88,15 @@ on:
         type: boolean
         required: true
         default: false
-      draft:
-        description: 'Publish the release as a draft'
-        type: boolean
+      release_state:
+        description: 'Release state to publish'
+        type: choice
+        options:
+          - release
+          - prerelease
+          - draft
         required: true
-        default: false
+        default: release
       options:
         description: 'Advanced: multi-line Key=Value overrides (see README for the full key list)'
         required: false
@@ -132,10 +136,10 @@ on:
         type: boolean
         required: true
         default: false
-      draft:
-        type: boolean
+      release_state:
+        type: string
         required: true
-        default: false
+        default: 'release'
       options:
         type: string
         required: false
@@ -175,7 +179,7 @@ jobs:
           UUP_ESD: ${{ inputs.esd }}
           UUP_MIRRORS: ${{ inputs.mirrors }}
           UUP_DRYRUN: ${{ inputs.dry_run }}
-          UUP_DRAFT: ${{ inputs.draft }}
+          UUP_RELEASE_STATE: ${{ inputs.release_state }}
           UUP_OPTIONS: ${{ inputs.options }}
         run: |
           $params = @{
@@ -187,7 +191,7 @@ jobs:
             Esd       = [bool]::Parse("$env:UUP_ESD".ToLowerInvariant())
             Mirrors   = $env:UUP_MIRRORS
             DryRun    = [bool]::Parse("$env:UUP_DRYRUN".ToLowerInvariant())
-            Draft     = [bool]::Parse("$env:UUP_DRAFT".ToLowerInvariant())
+            ReleaseState = $env:UUP_RELEASE_STATE
             Options   = $env:UUP_OPTIONS
           }
           ./scripts/Resolve-UupBuild.ps1 @params

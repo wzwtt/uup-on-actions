@@ -16,7 +16,7 @@ Inputs (normally forwarded from the workflow, defaults for local testing):
   -Options         multi-line Key=Value options text
   -Mirrors         buzzheavier / release+buzzheavier
   -DryRun          'true'/'false'
-  -Draft           'true'/'false'
+  -ReleaseState    release / prerelease / draft
 
 Writes:
   - Action outputs: guid, build, title, tag
@@ -31,7 +31,7 @@ param(
     [string]$Esd = 'false',
     [string]$Mirrors = 'buzzheavier',
     [string]$DryRun = 'false',
-    [string]$Draft = 'false',
+    [string]$ReleaseState = 'release',
     [string]$Options = ''
 )
 
@@ -59,7 +59,10 @@ if ($Editions -and ($Editions.Trim().ToLowerInvariant() -notin @('all','*'))) {
 $optionsMap = ConvertFrom-OptionsText $Options
 $esdBool = ConvertTo-Bool $Esd
 $dryRunBool = ConvertTo-Bool $DryRun
-$draftBool = ConvertTo-Bool $Draft
+$releaseState = ($ReleaseState).Trim().ToLowerInvariant()
+if ($releaseState -notin @('release', 'prerelease', 'draft')) {
+    Fail ("Invalid release state '{0}' (expected release / prerelease / draft)" -f $ReleaseState)
+}
 $mirrorsMode = $Mirrors.Trim().ToLowerInvariant()
 if ($mirrorsMode -notin @('buzzheavier', 'release+buzzheavier')) {
     Fail ("Invalid mirrors '{0}' (expected 'buzzheavier' or 'release+buzzheavier')" -f $Mirrors)
@@ -122,7 +125,7 @@ $state = [ordered]@{
     esd             = (ConvertTo-Bool ([string]$finalOptions['esd']))
     mirrors         = $mirrorsMode
     dryRun          = $dryRunBool
-    draft           = $draftBool
+    releaseState    = $releaseState
     force           = $force
     tagSuffix       = $tagSuffix
     tag             = $tag
@@ -135,9 +138,9 @@ Write-ActionOutput -Key 'title' -Value $found.title
 Write-ActionOutput -Key 'tag' -Value $tag
 Write-ActionOutput -Key 'force' -Value ([string]$force)
 
-Write-Summary ("## Build resolved`n`n| Field | Value |`n|---|---|`n| Title | {0} |`n| GUID | `{1}` |`n| Build | {2} |`n| Arch | {3} |`n| Language | {4} |`n| Editions | {5} |`n| Virtual editions | {6} |`n| Tag | `{7}` |`n" -f `
+Write-Summary ("## Build resolved`n`n| Field | Value |`n|---|---|`n| Title | {0} |`n| GUID | `{1}` |`n| Build | {2} |`n| Arch | {3} |`n| Language | {4} |`n| Editions | {5} |`n| Virtual editions | {6} |`n| Release state | {7} |`n| Tag | `{8}` |`n" -f `
     $found.title, $found.guid, $buildNo, $archN, $language, ($editionsList -join ', '), `
-    ($(if ($virtualList.Count) { $virtualList -join ', ' } else { '(none)' })), $tag)
+    ($(if ($virtualList.Count) { $virtualList -join ', ' } else { '(none)' })), $releaseState, $tag)
 
 Write-LogOk 'Phase 1 complete'
 exit 0

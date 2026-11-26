@@ -27,6 +27,7 @@ Write-Section 'Phase 4/5: publish'
 
 $state = Get-State
 $tag = $state.tag
+$releaseState = if ($state.releaseState) { ([string]$state.releaseState).Trim().ToLowerInvariant() } else { 'release' }
 if (-not $IsoPath) {
     if ($env:UUP_ISO_PATH) { $IsoPath = $env:UUP_ISO_PATH }
     else { Fail 'No ISO path known - did phase 3 run?' }
@@ -127,6 +128,7 @@ if ($env:GITHUB_SERVER_URL -and $env:GITHUB_REPOSITORY -and $env:GITHUB_RUN_ID) 
 }
 $manifest = [ordered]@{
     tag            = $tag
+    releaseState   = $releaseState
     build          = $state.build
     title          = $state.title
     guid           = $state.guid
@@ -170,6 +172,7 @@ $body += ('| Language | {0} |' -f $state.language)
 $body += ('| Editions | {0} |' -f (@($state.editions) -join ', '))
 $body += ('| Virtual editions | {0} |' -f ($(if (@($state.virtualEditions).Count) { @($state.virtualEditions) -join ', ' } else { '-' })))
 $body += ('| ISO | `{0}` ({1} GB) |' -f $iso.Name, $sizeGb)
+$body += ('| Release state | {0} |' -f $releaseState)
 $body += ('| SHA-256 | `{0}` |' -f $sha)
 $body += ''
 $body += '## Download'
@@ -212,7 +215,8 @@ if (-not $env:GH_TOKEN) { $env:GH_TOKEN = $env:GITHUB_TOKEN }
 $assets = @($sumsPath, $manifestPath)
 if ($volumePaths.Count -gt 0) { $assets += @($volumePaths | ForEach-Object { $_.FullName }) }
 $releaseArgs = @('release', 'create', $tag, '--target', $targetSha, '--title', $tag, '--notes-file', $bodyPath) + $assets
-if (ConvertTo-Bool ([string]$state.draft)) { $releaseArgs += '--draft' }
+if ($releaseState -eq 'prerelease') { $releaseArgs += '--prerelease' }
+if ($releaseState -eq 'draft') { $releaseArgs += '--draft' }
 Write-Log ('gh release create ' + ($releaseArgs -join ' '))
 & gh @releaseArgs
 if ($LASTEXITCODE -ne 0) { Fail "gh release create failed with exit code $LASTEXITCODE" }
@@ -220,8 +224,8 @@ $releaseUrl = ('{0}/{1}/releases/tag/{2}' -f $env:GITHUB_SERVER_URL, $env:GITHUB
 
 # --- 6. summary --------------------------------------------------------------------------
 $summaryVolumes = if ($volumePaths.Count -gt 0) { "`n| Release volumes | {0} x <=1900 MB |" -f $volumePaths.Count } else { '' }
-Write-Summary ("## Published: `{0}``n`n| | |`n|---|---|`n| Release | [{1}]({1}) |`n| ISO | {2} ({3} GB) |`n| SHA-256 | `{4}` |`n| buzzheavier | {5} |{6}`n" -f `
-    $tag, $releaseUrl, $iso.Name, $sizeGb, $sha, `
+Write-Summary ("## Published: `{0}``n`n| | |`n|---|---|`n| Release | [{1}]({1}) |`n| Release state | {2} |`n| ISO | {3} ({4} GB) |`n| SHA-256 | `{5}` |`n| buzzheavier | {6} |{7}`n" -f `
+    $tag, $releaseUrl, $releaseState, $iso.Name, $sizeGb, $sha, `
     ($(if ($buzzUrl) { $buzzUrl } else { '(upload failed - see warning above)' })), $summaryVolumes)
 
 Write-ActionOutput -Key 'releaseUrl' -Value $releaseUrl

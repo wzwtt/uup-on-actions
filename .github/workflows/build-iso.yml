@@ -5,17 +5,65 @@ on:
   workflow_dispatch:
     inputs:
       build:
-        description: 'latest | latest:<category> | <build number> | <GUID> | uupdump URL'
+        description: 'latest | latest:<category> | latest:<ring> | <build number> | <GUID> | uupdump URL'
         required: true
         default: 'latest'
       arch:
-        description: 'amd64 / arm64 / x86'
+        description: 'Target architecture'
+        type: choice
+        options:
+          - amd64
+          - arm64
+          - x86
         required: true
-        default: 'amd64'
+        default: amd64
       language:
-        description: 'uupdump language code (zh-cn, en-us, ...)'
+        description: 'uupdump language code (the list of uupdump-supported languages)'
+        type: choice
+        options:
+          - zh-cn
+          - zh-tw
+          - en-us
+          - en-gb
+          - ja-jp
+          - ko-kr
+          - de-de
+          - fr-fr
+          - fr-ca
+          - ru-ru
+          - es-es
+          - es-mx
+          - pt-br
+          - pt-pt
+          - it-it
+          - nl-nl
+          - pl-pl
+          - cs-cz
+          - sv-se
+          - da-dk
+          - fi-fi
+          - nb-no
+          - et-ee
+          - lv-lv
+          - lt-lt
+          - bg-bg
+          - hr-hr
+          - el-gr
+          - hu-hu
+          - ro-ro
+          - sk-sk
+          - sl-si
+          - sr-latn-rs
+          - uk-ua
+          - he-il
+          - ar-sa
+          - th-th
+          - tr-tr
+          - vi-vn
+          - id-id
+          - neutral
         required: true
-        default: 'zh-cn'
+        default: zh-cn
       editions:
         description: 'Comma-separated editions, e.g. professional or professional,core'
         required: true
@@ -54,7 +102,7 @@ on:
   workflow_call:
     inputs:
       build:
-        description: 'latest | latest:<category> | <build number> | <GUID> | uupdump URL'
+        description: 'latest | latest:<category> | latest:<ring> | <build number> | <GUID> | uupdump URL'
         type: string
         required: true
         default: 'latest'

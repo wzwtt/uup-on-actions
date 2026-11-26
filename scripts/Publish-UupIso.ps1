@@ -174,10 +174,9 @@ $body += ('| SHA-256 | `{0}` |' -f $sha)
 $body += ''
 $body += '## Download'
 if ($buzzUrl) {
-    $body += ('- **Full ISO (buzzheavier):** {0}' -f $buzzUrl)
+    $body += ('- **ISO image (buzzheavier):** {0}' -f $buzzUrl)
     $body += '- The linked file is the complete ISO image; no multi-part download or reassembly is required.'
-    $body += '- Anonymous buzzheavier uploads expire after several days without downloads (4 days observed); each download extends retention by 2 days, up to 60 days, and 60 or more downloads within 30 days make the file permanent. Mirror retention can be automated with [Buzzheavier-Keeper](https://github.com/wzwtt/Buzzheavier-Keeper).'
-    $body += '- Retrieval requires a browser session; plain command-line HTTP clients may be rejected by the hosting site''s bot protection.'
+    $body += '- Retention and retrieval of the mirror upload are governed by the policies of the hosting service. Automated mirror-retention maintenance is available through [Buzzheavier-Keeper](https://github.com/wzwtt/Buzzheavier-Keeper).'
 } else {
     $body += '- :warning: Mirror upload failed for this run - no single-file ISO download is available. Re-run the workflow to retry.'
 }

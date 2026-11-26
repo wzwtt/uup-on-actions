@@ -36,7 +36,7 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 | 文件 | 触发条件 | 功能 |
 |---|---|---|
 | `.github/workflows/build-iso.yml` | 手动（`workflow_dispatch`）或由监测工作流调用 | 单次构建；全部构建参数以输入形式开放。 |
-| `.github/workflows/watch.yml` | `schedule`（两小时间隔）及手动 | 解析受监测的 uupdump 分类，并为新出现的构建派发构建任务。 |
+| `.github/workflows/watch.yml` | `schedule`（两小时间隔）及手动 | 解析受监测的 uupdump 目标，为每个新目标派发一个并发构建作业，并在全部构建结束后汇总结果。 |
 
 ```
 手动触发 ─┐
@@ -257,7 +257,6 @@ tag_suffix=test
 ```json
 {
   "window": "17:00-21:00+0800",
-  "max_parallel": 2,
   "targets": [
     {
       "build": "retail",
@@ -285,7 +284,6 @@ tag_suffix=test
 | 字段 | 必填 | 默认 | 说明 |
 |---|---|---|---|
 | `window` | 否 | `17:00-21:00+0800` | 每日生效窗口，`HH:MM-HH:MM±偏移`；支持跨零点窗口（如 `22:00-06:00+0800`）。 |
-| `max_parallel` | 否 | `2` | 每周期内并发构建任务的上限。 |
 | `targets` | 是 | （见上文） | 监测目标数组；各目标字段与手动构建同名输入一一对应。 |
 | `targets[].build` | 是 | — | 通常为通道（如 `retail`、`beta`）或 `<category>@<ring>`；接受全部构建 spec 形式。 |
 | `targets[].arch` / `language` / `editions` | 否 | `amd64` / `zh-cn` / `professional` | 同手动构建；`editions` 另可取值 `all`。 |
@@ -297,9 +295,13 @@ tag_suffix=test
 
 配置文件位于仓库中的 `watch:uup-watch.json`；该分支另载有说明其用途的 README。
 
-### 派发语义
+### 派发与汇总
 
 当解析得到的最新完整构建对应的 Release 标签尚不存在时，该目标被派发执行；既有标签抑制重复执行，使相邻周期间的判定具有幂等性。某一周期内无法解析的目标（例如目录页出现瞬时访问质询）被跳过，并在下一周期重新评估。
+
+每个入队目标都成为一个独立的构建作业，因而占用一台独立 runner；所有入队目标同时启动，而非在同一 runner 上串行排队。并发度即入队目标数，仅受账号并发作业上限约束，因此配置中不设并行度参数。
+
+全部构建作业结束（无论成败）后，汇总作业收集各目标结果，向运行摘要写入一张表：每个计划目标的发布状态（`release` / `prerelease` / `draft`，或未发布）与 Release 链接。若某标签未出现在已发布状态中，说明其构建未完成，原因见对应作业日志。
 
 监测工作流的手动调用接受 `bypass_window` 输入，用于在窗口外进行测试性评估。
 
@@ -352,6 +354,7 @@ scripts/New-UupPackage.ps1        阶段二——下载包生成、修补、依�
 scripts/Invoke-UupConvert.ps1     阶段三——载荷下载、转换、校验
 scripts/Publish-UupIso.ps1        阶段四——摘要、镜像上传、Release 创建、摘要输出
 scripts/Watch-UupBuilds.ps1       定时周期——目标解析与矩阵规划
+scripts/Summarise-UupCycle.ps1    定时周期——构建结束后的结果汇总
 
 watch 分支（孤儿）：
 uup-watch.json                     定时监测配置

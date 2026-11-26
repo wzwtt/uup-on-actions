@@ -36,7 +36,7 @@ Produced images are intended for evaluation purposes only; see the [Legal notice
 | File | Trigger | Function |
 |---|---|---|
 | `.github/workflows/build-iso.yml` | manual (`workflow_dispatch`), or invoked by the watch workflow | A single build; all build parameters are exposed as inputs. |
-| `.github/workflows/watch.yml` | `schedule` (two-hour interval) and manual | Resolves monitored uupdump categories and dispatches builds for newly published builds. |
+| `.github/workflows/watch.yml` | `schedule` (two-hour interval) and manual | Resolves monitored uupdump targets, dispatches one concurrent build job per new target, and summarises the outcomes once all builds finish. |
 
 ```
 workflow_dispatch ─┐
@@ -257,7 +257,6 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 ```json
 {
   "window": "17:00-21:00+0800",
-  "max_parallel": 2,
   "targets": [
     {
       "build": "retail",
@@ -285,7 +284,6 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 | Field | Required | Default | Description |
 |---|---|---|---|
 | `window` | no | `17:00-21:00+0800` | Daily activation window, `HH:MM-HH:MM±offset`; overnight windows (e.g. `22:00-06:00+0800`) are supported. |
-| `max_parallel` | no | `2` | Maximum number of concurrent build jobs per cycle. |
 | `targets` | yes | *(see above)* | Monitoring targets; each target's fields correspond to the manual build inputs of the same names. |
 | `targets[].build` | yes | — | Typically a ring (e.g. `retail`, `beta`) or `<category>@<ring>`; accepts every build spec form. |
 | `targets[].arch` / `language` / `editions` | no | `amd64` / `zh-cn` / `professional` | As in the manual build; `editions` also accepts `all`. |
@@ -297,9 +295,13 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 
 The configuration file resides at `watch:uup-watch.json` in the repository; the branch also carries a README describing its purpose.
 
-### Dispatch semantics
+### Dispatch and aggregation
 
 A target is dispatched when the release tag computed for the resolved newest full build does not yet exist; existing tags suppress re-execution, which makes successive cycles idempotent. A target that cannot be resolved within a cycle (for example, due to a transient access challenge on the catalogue page) is skipped and re-evaluated in the following cycle.
+
+Each queued target becomes a separate build job and therefore a separate runner; all queued targets start together rather than sharing one runner sequentially. Concurrency is the number of queued targets, bounded only by the concurrent-job limit of the account, so no parallelism setting exists in the configuration.
+
+Once every build job has finished — successfully or not — an aggregation job collects the outcomes and writes one table to the run summary: for each planned target, the release state (`release` / `prerelease` / `draft`, or not published) and the release link. A tag that is absent from the table's published states indicates that its build did not complete; the corresponding job log carries the reason.
 
 Manual invocation of the watch workflow accepts a `bypass_window` input that disables the window check for testing.
 
@@ -352,6 +354,7 @@ scripts/New-UupPackage.ps1        Stage 2 — package generation, patching, depe
 scripts/Invoke-UupConvert.ps1     Stage 3 — payload download, conversion, verification
 scripts/Publish-UupIso.ps1        Stage 4 — digest, mirror upload, release creation, summary
 scripts/Watch-UupBuilds.ps1       Scheduled cycle — target resolution and matrix planning
+scripts/Summarise-UupCycle.ps1    Scheduled cycle — outcome aggregation after the builds
 
 watch branch (orphan):
 uup-watch.json                     Scheduled-monitoring configuration

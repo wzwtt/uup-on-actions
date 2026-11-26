@@ -7,7 +7,7 @@ Runs inside the scheduled `watch.yml` job (or manual watch dispatch):
   1. Reads the monitoring configuration from the file supplied by the
      workflow (fetched from the `watch` orphan branch); a missing file or
      branch falls back to the built-in defaults:
-        { "window": "17:00-21:00+0800", "max_parallel": 2,
+        { "window": "17:00-21:00+0800",
           "targets": [ { "build": "retail", "arch": "amd64",
                          "language": "zh-cn", "editions": "all",
                          "virtual_editions": "all",
@@ -17,7 +17,9 @@ Runs inside the scheduled `watch.yml` job (or manual watch dispatch):
      to a concrete build and
      computes its tag. Targets whose release tag already exists are skipped
      (idempotent - no state files needed).
-  4. Emits a GitHub Actions matrix for the downstream build jobs.
+  4. Emits a GitHub Actions matrix: each queued target becomes its own build
+     job and therefore runs on its own runner. All of them start together, so
+     concurrency is the matrix size itself - there is no parallelism setting.
 
 Failures to resolve a target (e.g. Cloudflare challenge on the list page)
 SKIP that target and continue with the rest - a watch cycle must never
@@ -38,7 +40,6 @@ Write-Section 'Watch: check for new builds'
 # --- default config -------------------------------------------------------------
 $defaultConfig = [ordered]@{
     window      = '17:00-21:00+0800'
-    max_parallel = 2
     targets     = @(
         @{ build = 'retail'; arch = 'amd64'; language = 'zh-cn'; editions = 'all'; virtual_editions = 'all'; release_state = 'release' },
         @{ build = 'retail'; arch = 'amd64'; language = 'en-us'; editions = 'all'; virtual_editions = 'all'; release_state = 'release' }
@@ -179,12 +180,15 @@ foreach ($t in $targets) {
 
 $count = [string]$include.Count
 $matrixJson = (@{ include = $include } | ConvertTo-Json -Depth 8 -Compress)
-$maxParallel = [string]$cfg.max_parallel
-if (-not $maxParallel) { $maxParallel = '2' }
+# Every queued target becomes its own job on its own runner; the number of
+# concurrent jobs follows the matrix size, so no parallelism setting is needed
+# (or accepted).
+if ($cfg.PSObject.Properties.Name -contains 'max_parallel') {
+    Write-LogWarn 'max_parallel in the watch configuration is ignored - each target runs on its own runner and the matrix size determines the concurrency'
+}
 
 Write-ActionOutput -Key 'count' -Value $count
 Write-ActionOutput -Key 'matrix' -Value $matrixJson
-Write-ActionOutput -Key 'max_parallel' -Value $maxParallel
 
 Write-Log ("New builds this cycle: {0}" -f $count)
 if ($count -ne '0') {

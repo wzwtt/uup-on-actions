@@ -29,7 +29,6 @@ jobs:
     outputs:
       count: ${{ steps.watch.outputs.count }}
       matrix: ${{ steps.watch.outputs.matrix }}
-      max_parallel: ${{ steps.watch.outputs.max_parallel }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -68,7 +67,6 @@ jobs:
     if: needs.plan.outputs.count != '0' && needs.plan.outputs.count != ''
     strategy:
       fail-fast: false
-      max-parallel: ${{ fromJSON(needs.plan.outputs.max_parallel) }}
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     uses: ./.github/workflows/build-iso.yml
     with:
@@ -84,3 +82,21 @@ jobs:
       release_state: ${{ matrix.release_state }}
     permissions:
       contents: write
+
+  summary:
+    name: Summarise cycle
+    needs: [plan, build]
+    if: always() && needs.plan.outputs.count != '0' && needs.plan.outputs.count != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Collect release outcomes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          UUP_MATRIX: ${{ needs.plan.outputs.matrix }}
+        run: ./scripts/Summarise-UupCycle.ps1

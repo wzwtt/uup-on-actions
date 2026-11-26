@@ -1,6 +1,5 @@
 {
   "window": "17:00-21:00+0800",
-  "max_parallel": 2,
   "targets": [
     {
       "build": "retail",

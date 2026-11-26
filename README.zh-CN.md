@@ -99,28 +99,26 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 
 ### `language`
 
-单一 uupdump 语言代码（下拉选择）。取值集合与 uupdump 构建的语言列表一致：`zh-cn`、`zh-tw`、`en-us`、`en-gb`、`ja-jp`、`ko-kr`、`de-de`、`fr-fr`、`fr-ca`、`ru-ru`、`es-es`、`es-mx`、`pt-br`、`pt-pt`、`it-it`、`nl-nl`、`pl-pl`、`cs-cz`、`sv-se`、`da-dk`、`fi-fi`、`nb-no`、`et-ee`、`lv-lv`、`lt-lt`、`bg-bg`、`hr-hr`、`el-gr`、`hu-hu`、`ro-ro`、`sk-sk`、`sl-si`、`sr-latn-rs`、`uk-ua`、`he-il`、`ar-sa`、`th-th`、`tr-tr`、`vi-vn`、`id-id`，以及 `neutral`（任意语言）。特定构建可用的语言集合以其语言选择页为准；不受支持的组合在下载包生成阶段失败，早于载荷传输，并附 uupdump 的错误信息。
+单一 uupdump 语言代码（下拉选择）。取值集合与 uupdump 构建的语言列表一致：`zh-cn`、`zh-tw`、`en-us`、`en-gb`、`ja-jp`、`ko-kr`、`de-de`、`fr-fr`、`fr-ca`、`ru-ru`、`es-es`、`es-mx`、`pt-br`、`pt-pt`、`it-it`、`nl-nl`、`pl-pl`、`cs-cz`、`sv-se`、`da-dk`、`fi-fi`、`nb-no`、`et-ee`、`lv-lv`、`lt-lt`、`bg-bg`、`hr-hr`、`el-gr`、`hu-hu`、`ro-ro`、`sk-sk`、`sl-si`、`sr-latn-rs`、`uk-ua`、`he-il`、`ar-sa`、`th-th`、`tr-tr`，以及 `neutral`（任意语言）。特定构建可用的语言集合以其语言选择页为准；不受支持的组合在下载包生成阶段失败，早于载荷传输，并附 uupdump 的错误信息。
 
 ### `editions`
 
-以逗号分隔的目标版本列表；多个版本被组装为单一多版本镜像。
+以逗号分隔的目标版本列表；多个版本被组装为单一多版本镜像。这些是 uupdump 的**基础版本**——即构建版本选择页上的复选框集合（可直接下载的源，每个版本对应镜像中的一个条目）。教育版、企业版、IoT 企业版等并非基础版本，属于 `virtual_editions`。
 
 | 取值 | 版本 |
 |---|---|
-| `professional` | Windows 专业版 |
 | `core` | Windows 家庭版 |
-| `corecountryspecific` | Windows 家庭中文版 |
-| `coren` / `professionaln` | 家庭 N 版 / 专业 N 版 |
-| `education` / `educationn` | 教育版 |
-| `enterprise` / `enterprisen` | 企业版 |
-| `iotenterprise` | IoT 企业版 |
-| `serverstandard`、`serverdatacenter` 等 | Server 系列版本（适用于 Server 分支构建） |
+| `coren` | Windows 家庭 N 版（提供该版本的市场/构建） |
+| `corecountryspecific` | Windows 家庭中文版（中文语言构建） |
+| `professional` | Windows 专业版 |
+| `professionaln` | Windows 专业 N 版（提供该版本的市场/构建） |
+| `serverstandard`、`serverdatacenter` 等 | Server 系列版本（Server 分支构建） |
 
-特定构建支持的版本集合可通过 `dry_run` 调用确认。
+可用集合随构建与语言而异（如家庭中文版仅出现于中文构建，N 版仅在适用处出现）；以构建的版本选择页为准。`dry_run` 调用可确认组合是否被接受。
 
 ### `virtual_editions`
 
-以逗号分隔的附加虚拟版本列表，在转换后经 DISM 生成（对应 uupdump 的 `autodl=3` 模式）。任何非空取值启用该特性；空值表示禁用。
+以逗号分隔的附加虚拟版本列表，在转换后经 DISM 生成（对应 uupdump 的 `autodl=3` 模式）。任何非空取值启用该特性；空值表示禁用。虚拟版本在不重新下载载荷的前提下为镜像增加可选版本；可用集合同样随构建而异，对应下载页“Select additional editions”复选框集合。
 
 | 取值 | 版本 |
 |---|---|
@@ -131,6 +129,7 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 | `Enterprise` | 企业版 |
 | `ServerRdsh` | 企业多会话 / 虚拟桌面版 |
 | `IoTEnterprise` | IoT 企业版 |
+| `IoTEnterpriseK` | IoT 企业订阅版 |
 
 ### `esd`
 

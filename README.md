@@ -99,28 +99,26 @@ When `build` is given as a GUID or URL, a mismatch between the build's actual ar
 
 ### `language`
 
-A single uupdump language code (dropdown). The selection corresponds to the language list of uupdump builds: `zh-cn`, `zh-tw`, `en-us`, `en-gb`, `ja-jp`, `ko-kr`, `de-de`, `fr-fr`, `fr-ca`, `ru-ru`, `es-es`, `es-mx`, `pt-br`, `pt-pt`, `it-it`, `nl-nl`, `pl-pl`, `cs-cz`, `sv-se`, `da-dk`, `fi-fi`, `nb-no`, `et-ee`, `lv-lv`, `lt-lt`, `bg-bg`, `hr-hr`, `el-gr`, `hu-hu`, `ro-ro`, `sk-sk`, `sl-si`, `sr-latn-rs`, `uk-ua`, `he-il`, `ar-sa`, `th-th`, `tr-tr`, `vi-vn`, `id-id`, and `neutral` (any language). The set of languages available for a particular build is presented on that build's language selection page; an unsupported combination fails during package generation, before payload transfer begins, with the uupdump error message.
+A single uupdump language code (dropdown). The selection corresponds to the language list of uupdump builds: `zh-cn`, `zh-tw`, `en-us`, `en-gb`, `ja-jp`, `ko-kr`, `de-de`, `fr-fr`, `fr-ca`, `ru-ru`, `es-es`, `es-mx`, `pt-br`, `pt-pt`, `it-it`, `nl-nl`, `pl-pl`, `cs-cz`, `sv-se`, `da-dk`, `fi-fi`, `nb-no`, `et-ee`, `lv-lv`, `lt-lt`, `bg-bg`, `hr-hr`, `el-gr`, `hu-hu`, `ro-ro`, `sk-sk`, `sl-si`, `sr-latn-rs`, `uk-ua`, `he-il`, `ar-sa`, `th-th`, `tr-tr`, and `neutral` (any language). The set of languages available for a particular build is presented on that build's language selection page; an unsupported combination fails during package generation, before payload transfer begins, with the uupdump error message.
 
 ### `editions`
 
-Comma-separated list of target editions; multiple editions are assembled into a single multi-edition image.
+Comma-separated list of target editions; multiple editions are assembled into a single multi-edition image. These are the uupdump *base* editions — the checkbox set on the build's edition selection page (directly selectable sources, one image entry per edition). Education, Enterprise, IoT Enterprise and similar are not base editions; they belong to `virtual_editions`.
 
 | Value | Edition |
 |---|---|
-| `professional` | Windows Pro |
 | `core` | Windows Home |
-| `corecountryspecific` | Windows Home (China) |
-| `coren` / `professionaln` | Home N / Pro N |
-| `education` / `educationn` | Education |
-| `enterprise` / `enterprisen` | Enterprise |
-| `iotenterprise` | IoT Enterprise |
-| `serverstandard`, `serverdatacenter`, … | Server editions (applicable to Server branch builds) |
+| `coren` | Windows Home N (builds/market editions providing it) |
+| `corecountryspecific` | Windows Home China (Chinese-language builds) |
+| `professional` | Windows Pro |
+| `professionaln` | Windows Pro N (builds/market editions providing it) |
+| `serverstandard`, `serverdatacenter`, … | Server editions (Server branch builds) |
 
-The set of editions supported by a particular build can be confirmed with a `dry_run` invocation.
+The available set varies per build and per language (e.g. the China edition appears only for Chinese builds, N editions only where applicable); the edition selection page of the build is authoritative. A `dry_run` invocation confirms that a combination is accepted.
 
 ### `virtual_editions`
 
-Comma-separated list of additional virtual editions, generated with DISM after conversion (uupdump `autodl=3` mode). Any non-empty value enables the feature; an empty value disables it.
+Comma-separated list of additional virtual editions, generated with DISM after conversion (uupdump `autodl=3` mode). Any non-empty value enables the feature; an empty value disables it. Virtual editions add selectable editions to the image without re-downloading the payload; the available set likewise varies per build and follows the "Select additional editions" checkbox set on the download page.
 
 | Value | Edition |
 |---|---|
@@ -131,6 +129,7 @@ Comma-separated list of additional virtual editions, generated with DISM after c
 | `Enterprise` | Enterprise |
 | `ServerRdsh` | Enterprise multi-session / Virtual Desktops |
 | `IoTEnterprise` | IoT Enterprise |
+| `IoTEnterpriseK` | IoT Enterprise Subscription |
 
 ### `esd`
 

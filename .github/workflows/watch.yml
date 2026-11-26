@@ -1,11 +1,15 @@
 name: Watch new builds
 
-# Periodically checks whether the monitored uupdump categories have a new
-# full Windows build and triggers Build Windows ISO for each new one.
-# The monitoring configuration (daily time window, concurrency limit and
-# target list) is version-controlled on the `watch` orphan branch; each
-# cycle fetches uup-watch.json from that branch (built-in defaults apply
-# when the branch or the file is absent).
+# Periodically checks whether the monitored uupdump targets have a new full
+# Windows build and triggers Build Windows ISO for each new one. Each queued
+# target runs as its own job on its own runner, concurrently; a final job
+# collects the outcomes once every build has finished.
+# The monitoring configuration (daily time window and target list) is
+# version-controlled on the `watch` orphan branch; each cycle fetches
+# uup-watch.json from that branch (built-in defaults apply when the branch or
+# the file is absent). Scheduled cycles only act inside the configured daily
+# window; a manual dispatch acts immediately unless bypass_window is set to
+# false, and plan_only reports what would be dispatched without building.
 
 on:
   schedule:
@@ -13,7 +17,12 @@ on:
   workflow_dispatch:
     inputs:
       bypass_window:
-        description: 'Run outside the configured window (testing)'
+        description: 'Ignore the daily activation window (manual runs default to true)'
+        type: boolean
+        required: false
+        default: true
+      plan_only:
+        description: 'Resolve and report the targets without dispatching builds'
         type: boolean
         required: false
         default: false
@@ -57,6 +66,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_BYPASS: ${{ inputs.bypass_window }}
+          UUP_PLAN_ONLY: ${{ inputs.plan_only }}
         run: |
           $bypass = if ($env:GITHUB_BYPASS -eq 'true' -or $env:GITHUB_BYPASS -eq 'True') { 'true' } else { 'false' }
           ./scripts/Watch-UupBuilds.ps1 -BypassWindow $bypass
@@ -64,7 +74,7 @@ jobs:
   build:
     name: ${{ matrix.tag }}
     needs: plan
-    if: needs.plan.outputs.count != '0' && needs.plan.outputs.count != ''
+    if: needs.plan.outputs.count != '0' && needs.plan.outputs.count != '' && !inputs.plan_only
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -86,7 +96,7 @@ jobs:
   summary:
     name: Summarise cycle
     needs: [plan, build]
-    if: always() && needs.plan.outputs.count != '0' && needs.plan.outputs.count != ''
+    if: always() && needs.plan.outputs.count != '0' && needs.plan.outputs.count != '' && !inputs.plan_only
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

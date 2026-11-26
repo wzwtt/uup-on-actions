@@ -83,9 +83,11 @@ if (ConvertTo-Bool $BypassWindow) {
     Write-Log ("Config source: {0}; window {1} (current local time {2:HH:mm})" -f $cfgSource, $win, $now)
     if (-not $inWindow) {
         Write-Log 'Outside the daily window - nothing to do.'
+        Write-LogWarn ("No build was dispatched: the cycle is outside the activation window {0} and the current local time is {1:HH:mm}. Scheduled cycles only act inside the window; a manual dispatch passes bypass_window=true for this by default." -f $win, $now)
+        Write-Host ("::warning::Outside the activation window {0} (local time {1:HH:mm}) - no build dispatched. Manual dispatch bypasses the window by default." -f $win, $now)
         Write-ActionOutput -Key 'count' -Value '0'
         Write-ActionOutput -Key 'matrix' -Value '{"include":[]}'
-        Write-Summary '## Watch`n`nOutside the configured time window - no builds this cycle.`n'
+        Write-Summary ("## Watch`n`nNo build was dispatched: the cycle ran outside the configured activation window.`n`n| | |`n|---|---|`n| Window | {0} |`n| Current local time | {1:HH:mm} |`n`nScheduled cycles only act inside the window. A manual run bypasses it unless `bypass_window` is set to false.`n" -f $win, $now)
         exit 0
     }
 }
@@ -203,6 +205,9 @@ if ($include.Count -gt 0) {
     }
 } else {
     $summary += "Nothing new to build.`n"
+}
+if (ConvertTo-Bool ([string]$env:UUP_PLAN_ONLY)) {
+    $summary += "`nPlan-only run: the targets above were resolved and reported, no build job was dispatched.`n"
 }
 Write-Summary $summary
 exit 0

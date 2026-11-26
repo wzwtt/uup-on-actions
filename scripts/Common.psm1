@@ -136,10 +136,67 @@ function New-UupWebSession {
     return $session
 }
 
+function Get-HttpErrorBody {
+    <# Extracts the response body text from a failed Invoke-WebRequest,
+       compatible with PowerShell 5.1 (HttpWebResponse) and 7 (ErrorDetails).
+       Returns [string] (possibly empty). #>
+    param([AllowNull()]$ErrorRecord)
+    if (-not $ErrorRecord) { return '' }
+    # PowerShell 7+: ErrorDetails.Message carries the body verbatim
+    try {
+        $ed = $ErrorRecord.ErrorDetails
+        if ($ed -and $ed.Message) {
+            $t = [string]$ed.Message
+            if ($t.Trim()) { return $t }
+        }
+    } catch { }
+    # PowerShell 5.1 / fallback: read the response stream
+    try {
+        $resp = $ErrorRecord.Exception.Response
+        if ($resp) {
+            $stream = $resp.GetResponseStream()
+            if ($stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                $t = $reader.ReadToEnd()
+                $reader.Dispose()
+                return $t
+            }
+        }
+    } catch { }
+    return ''
+}
+
+function Get-HttpStatusCode {
+    param([AllowNull()]$ErrorRecord)
+    try {
+        if ($ErrorRecord.Exception.Response) { return [int]$ErrorRecord.Exception.Response.StatusCode }
+    } catch { }
+    return 0
+}
+
+function Get-UupdumpErrorText {
+    <# Extracts the human-readable message from a uupdump error page
+       (HTTP error pages render the message in a <p> element). #>
+    param([string]$Body)
+    if (-not $Body) { return $null }
+    if ($Body -notmatch '(?i)<!DOCTYPE|<html') { return $null }
+    foreach ($m in [regex]::Matches($Body, '(?s)<p[^>]*>\s*(.*?)\s*</p>')) {
+        $t = ($m.Groups[1].Value -replace '<[^>]+>', '' -replace '\s+', ' ').Trim()
+        if ($t -and $t.Length -gt 5 -and $t -notmatch '(?i)theme|©|cookie') { return $t }
+    }
+    return $null
+}
+
 function Invoke-UupRequest {
     <#
     .SYNOPSIS
     Performs an HTTP request to uupdump with warm-up, retries and backoff.
+
+    .DESCRIPTION
+    Retry policy: transient conditions (429, 5xx, timeouts, Cloudflare
+    managed challenges) are retried with backoff. Non-429 4xx responses are
+    client errors - they are never retried; when the response body is a
+    uupdump error page, its message is surfaced verbatim.
 
     .PARAMETER Uri            Target URL.
     .PARAMETER Method         GET (default) or POST.
@@ -191,19 +248,20 @@ function Invoke-UupRequest {
             return Invoke-WebRequest -UseBasicParsing -Uri $Uri -Method $Method `
                 -WebSession $session -Headers $headers -TimeoutSec $TimeoutSec
         } catch {
-            $cfChallenge = $false
-            try {
-                $respStream = $_.Exception.Response
-                if ($respStream) {
-                    $stream = $respStream.GetResponseStream()
-                    if ($stream) {
-                        $reader = New-Object System.IO.StreamReader($stream)
-                        $bodyText = $reader.ReadToEnd()
-                        $reader.Dispose()
-                        if ($bodyText -match '__cf_chl|Just a moment|challenge-platform|cf-chl') { $cfChallenge = $true }
-                    }
+            $bodyText = Get-HttpErrorBody $_
+            $statusCode = Get-HttpStatusCode $_
+            $cfChallenge = ($bodyText -match '__cf_chl|Just a moment|challenge-platform|cf-chl')
+
+            # --- non-429 client errors: never retried, cause surfaced ----------
+            if ($statusCode -ge 400 -and $statusCode -lt 500 -and $statusCode -ne 429) {
+                $uupErr = Get-UupdumpErrorText $bodyText
+                if ($uupErr) {
+                    Fail ("uupdump rejected the request (HTTP {0}): {1} Check the build / language / editions inputs against the uupdump website for this build." -f $statusCode, $uupErr)
                 }
-            } catch { }
+                Fail ("Request to {0} failed with HTTP {1} (client error - not retried). The language/edition/build combination is most likely invalid; check it against the uupdump website." -f $Uri, $statusCode)
+            }
+
+            # --- transient conditions: backoff and retry -------------------------
             if ($cfChallenge) {
                 # A Cloudflare managed challenge will not clear by itself; retry
                 # a couple of times (challenges are intermittent), then give up
@@ -217,7 +275,7 @@ function Invoke-UupRequest {
             }
             if ($attempt -gt $Retries) { Fail ("Request to {0} failed after {1} attempts: {2}" -f $Uri, $attempt, $_.Exception.Message) }
             $wait = if ($attempt -le $delays.Count) { $delays[$attempt - 1] } else { 60 }
-            Write-LogWarn ("Attempt {0} to {1} failed ({2}); retrying in {3}s..." -f $attempt, $Uri, $_.Exception.Message, $wait)
+            Write-LogWarn ("Attempt {0} to {1} failed (HTTP {2}); retrying in {3}s..." -f $attempt, $Uri, $statusCode, $wait)
             Start-Sleep -Seconds $wait
         }
     }
@@ -377,10 +435,46 @@ function ConvertTo-List {
 # Accepted specs:
 #   latest                    newest full build on uupdump (all categories)
 #   latest:<category>         newest full build inside one category
+#   latest@<ring>             newest full build published on an update ring
+#                             (uupdump fetchupd.php; e.g. retail, rp, wif,
+#                             wis, beta, canary)
 #   26200.1234                exact build number search
 #   <36-char GUID>            direct uupdump build id
 #   https://uupdump.net/...   any uupdump URL containing id=<guid>
 # ---------------------------------------------------------------------------
+
+$script:UupRingAliases = [ordered]@{
+    retail          = 'retail'
+    public          = 'retail'
+    release         = 'retail'
+    rp              = 'rp'
+    preview         = 'rp'
+    releasepreview  = 'rp'
+    wif             = 'wif'
+    fast            = 'wif'
+    insiderfast     = 'wif'
+    wis             = 'wis'
+    slow            = 'wis'
+    insiderslow     = 'wis'
+    beta            = 'beta'
+    canary          = 'canary'
+}
+
+function Get-UupBuildNumberTuple {
+    <# Turns "26200.10075" into a comparable tuple (major, minor). #>
+    param([string]$BuildNo)
+    if ($BuildNo -match '^(\d+)\.(\d+)$') { return @([int]$Matches[1], [int]$Matches[2]) }
+    return @(0, 0)
+}
+
+function Compare-UupBuildNumber {
+    <# Returns 1 if A > B, -1 if A < B, 0 if equal. #>
+    param([string]$A, [string]$B)
+    $ta = Get-UupBuildNumberTuple $A
+    $tb = Get-UupBuildNumberTuple $B
+    if ($ta[0] -ne $tb[0]) { return [Math]::Sign($ta[0] - $tb[0]) }
+    return [Math]::Sign($ta[1] - $tb[1])
+}
 
 function Find-UupBuild {
     param(
@@ -421,6 +515,49 @@ function Find-UupBuild {
         return @{ guid = $guid; build = $build; title = $title; arch = $archN; date = $null; category = $null }
     }
 
+    # --- latest@<ring>: update-ring query via fetchupd.php ----------------
+    if ($spec -match '^latest@([A-Za-z]+)$') {
+        $ringRaw = $Matches[1].ToLowerInvariant()
+        $ring = $script:UupRingAliases[$ringRaw]
+        if (-not $ring) {
+            $valid = ($script:UupRingAliases.Keys | Sort-Object) -join ', '
+            Fail ("Unknown ring '{0}'. Valid rings (aliases in parentheses): {1}" -f $ringRaw, $valid)
+        }
+        $uri = ('https://uupdump.net/fetchupd.php?arch={0}&ring={1}' -f $archN, $ring)
+        Write-Log ("Fetching update ring: {0} (ring={1})" -f $uri, $ring)
+        $resp = Invoke-UupRequest -Uri $uri -Warmup
+        $html = [string]$resp.Content
+
+        $rowPattern = '<a href="selectlang\.php\?id=([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"\s*>\s*(.*?)\s*</a>'
+        $matchesAll = [regex]::Matches($html, $rowPattern, [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        if ($matchesAll.Count -eq 0) {
+            Fail ("Ring '{0}' returned no builds for arch '{1}'. The ring may be dormant at the moment - try another ring or a category." -f $ring, $archN)
+        }
+        # Pick the newest full build on this ring. Servicing entries carry a
+        # KB article number ("... Update - KB5137003") or are Critical OOBE
+        # updates; full builds - including "Feature Update" entries - do not.
+        $candidates = @()
+        $skipped = 0
+        foreach ($m in $matchesAll) {
+            $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
+            if ($title -match '(?i)KB\d{5,}|\bcritical\b') { $skipped++; continue }
+            $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
+            $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')
+            $rowArch = if ($archCell.Success) { $archCell.Groups[1].Value.Trim().ToLowerInvariant() } else { '' }
+            if ($rowArch -ne $archDisplay) { continue }
+            $buildNo = [regex]::Match($title, '(\d{4,6}\.\d{1,5})').Groups[1].Value
+            if (-not $buildNo) { continue }
+            $candidates += @{ guid = $m.Groups[1].Value.ToLowerInvariant(); build = $buildNo; title = $title; arch = $archN }
+        }
+        if ($candidates.Count -eq 0) {
+            Fail ("Ring '{0}' has no full build for arch '{1}' ({2} servicing entries skipped). Try a category spec or a different ring." -f $ring, $archN, $skipped)
+        }
+        $picked = @($candidates | Sort-Object -Property @{Expression = { (Get-UupBuildNumberTuple $_.build)[0] }}, @{Expression = { (Get-UupBuildNumberTuple $_.build)[1] }} -Descending)[0]
+        $picked['ring'] = $ring
+        Write-Log ("Resolved build on ring '{0}': {1}  [{2}]" -f $ring, $picked.build, $picked.title)
+        return $picked
+    }
+
     # --- latest / latest:<category> / <build number> ----------------------
     $query = $null
     $category = $null
@@ -454,8 +591,9 @@ function Find-UupBuild {
     $skipped = 0
     foreach ($m in $matchesAll) {
         $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
-        # Skip servicing entries (cumulative updates, critical OOBE hotfixes...)
-        if ($title -match '(?i)\b(update|critical)\b') { $skipped++; continue }
+        # Skip servicing entries: they carry a KB article number ("... Update
+        # - KB5137003") or are Critical OOBE updates; full builds do not.
+        if ($title -match '(?i)KB\d{5,}|\bcritical\b') { $skipped++; continue }
         # Extract the arch cell that follows this row
         $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
         $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')

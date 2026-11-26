@@ -43,8 +43,17 @@ Write-Section 'Phase 1/5: resolve build'
 $archN = Get-NormalizedArch $Arch
 $language = $Language.Trim().ToLowerInvariant()
 if (-not $language) { Fail 'language input is empty' }
+if ($language -match '[,;]') {
+    Fail ("language input must be a single uupdump language code; multiple values are not supported (got '{0}'). Check the language choices on the build's uupdump page." -f $language)
+}
+if ($language -notmatch '^[a-z]{2,3}(-[a-z]{2,8}(-[a-z]{2,8})?)?$') {
+    Write-LogWarn ("language '{0}' does not look like a standard uupdump language code - continuing, the package generation will validate it" -f $language)
+}
 $editionsList = ConvertTo-List $Editions
 if ($editionsList.Count -eq 0) { Fail 'editions input is empty - provide at least one edition' }
+if (($Editions -replace '\s','') -match '(?:^|,)(?:$|,)') {
+    Fail ("editions input '{0}' contains an empty element - remove empty entries between commas" -f $Editions)
+}
 $virtualList = @(ConvertTo-List $VirtualEditions)
 $optionsMap = ConvertFrom-OptionsText $Options
 $esdBool = ConvertTo-Bool $Esd

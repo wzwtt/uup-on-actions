@@ -432,12 +432,15 @@ function ConvertTo-List {
 
 # ---------------------------------------------------------------------------
 # Build discovery: turns a build spec into { guid, build, title, arch, date }
-# Accepted specs:
-#   latest                    newest full build on uupdump (all categories)
-#   latest:<category>         newest full build inside one category
-#   latest@<ring>             newest full build published on an update ring
-#                             (uupdump fetchupd.php; e.g. retail, rp, wif,
-#                             wis, beta, canary)
+# Accepted specs ("newest" is implied by the form itself; an older build is
+# requested by build number, GUID or URL):
+#   <category>                newest full build inside a catalogue category
+#                             (e.g. w11-25h2, server-24h2, w11-26h2-experimental)
+#   <ring>                    newest full build published on an update ring
+#                             (uupdump fetchupd.php; retail, rp, wif, wis,
+#                             beta, canary - plus aliases)
+#   <category>@<ring>         newest full build of that product line on that
+#                             ring (e.g. w11-24h2@retail)
 #   26200.1234                exact build number search
 #   <36-char GUID>            direct uupdump build id
 #   https://uupdump.net/...   any uupdump URL containing id=<guid>
@@ -474,6 +477,31 @@ function Compare-UupBuildNumber {
     $tb = Get-UupBuildNumberTuple $B
     if ($ta[0] -ne $tb[0]) { return [Math]::Sign($ta[0] - $tb[0]) }
     return [Math]::Sign($ta[1] - $tb[1])
+}
+
+function Test-RingEntryMatchesCategory {
+    <# Whether a ring-query full-build entry belongs to the product line
+       denoted by a category slug (e.g. w11-24h2, server-24h2,
+       w11-26h2-experimental). The version core of the slug (24h2, 1809, …)
+       must appear in the entry title; the family prefix (w11 / w10 / server)
+       constrains the title family accordingly. Insider ring entries whose
+       titles carry no version designation never match. #>
+    param([string]$Title, [string]$CategorySlug)
+
+    $core = $CategorySlug.ToLowerInvariant()
+    $family = $null
+    if ($core -match '^w1[01]-') { $family = $core.Substring(0, 3); $core = $core.Substring(4) }
+    elseif ($core -match '^server-') { $family = 'server'; $core = $core.Substring(7) }
+    $core = $core -replace '-(beta|experimental)$', ''
+    if (-not $core) { return $false }
+
+    if ($Title -notmatch ('(?i)\b' + [regex]::Escape($core) + '\b')) { return $false }
+    switch ($family) {
+        'w11'    { if ($Title -notmatch '^Windows 11\b') { return $false } }
+        'w10'    { if ($Title -notmatch '^Windows 10\b') { return $false } }
+        'server' { if ($Title -notmatch '(?i)\bserver\b') { return $false } }
+    }
+    return $true
 }
 
 function Find-UupBuild {
@@ -515,16 +543,24 @@ function Find-UupBuild {
         return @{ guid = $guid; build = $build; title = $title; arch = $archN; date = $null; category = $null }
     }
 
-    # --- latest@<ring>: update-ring query via fetchupd.php ----------------
-    if ($spec -match '^latest@([A-Za-z]+)$') {
-        $ringRaw = $Matches[1].ToLowerInvariant()
-        $ring = $script:UupRingAliases[$ringRaw]
+    # --- ring forms: <ring>, <category>@<ring> (fetchupd.php) --------------
+    $specLower = $spec.ToLowerInvariant()
+    $ringCategory = $null
+    $ring = $null
+    if ($specLower -match '^([a-z0-9][a-z0-9-]*)@([a-z]+)$') {
+        $ringCategory = $Matches[1]
+        $ring = $script:UupRingAliases[$Matches[2]]
         if (-not $ring) {
             $valid = ($script:UupRingAliases.Keys | Sort-Object) -join ', '
-            Fail ("Unknown ring '{0}'. Valid rings (aliases in parentheses): {1}" -f $ringRaw, $valid)
+            Fail ("Unknown ring '{0}' in spec '{1}'. Valid rings (aliases in parentheses): {2}" -f $Matches[2], $spec, $valid)
         }
+    } elseif ($specLower -match '^[a-z]+$') {
+        $ring = $script:UupRingAliases[$specLower]
+    }
+
+    if ($ring) {
         $uri = ('https://uupdump.net/fetchupd.php?arch={0}&ring={1}' -f $archN, $ring)
-        Write-Log ("Fetching update ring: {0} (ring={1})" -f $uri, $ring)
+        Write-Log ("Fetching update ring: {0} (ring={1}{2})" -f $uri, $ring, $(if ($ringCategory) { ", category={0}" -f $ringCategory } else { '' }))
         $resp = Invoke-UupRequest -Uri $uri -Warmup
         $html = [string]$resp.Content
 
@@ -533,14 +569,16 @@ function Find-UupBuild {
         if ($matchesAll.Count -eq 0) {
             Fail ("Ring '{0}' returned no builds for arch '{1}'. The ring may be dormant at the moment - try another ring or a category." -f $ring, $archN)
         }
-        # Pick the newest full build on this ring. Servicing entries carry a
-        # KB article number ("... Update - KB5137003") or are Critical OOBE
-        # updates; full builds - including "Feature Update" entries - do not.
+        # Collect full builds only. Full builds are titled
+        # "Windows 11, version …" / "Windows 10, version …" / "Windows
+        # Server, version …" / "Windows 11 Insider Preview Feature Update …";
+        # servicing entries (cumulative updates, .NET updates, critical OOBE
+        # updates, server hotpatches) never start with "Windows".
         $candidates = @()
         $skipped = 0
         foreach ($m in $matchesAll) {
             $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
-            if ($title -match '(?i)KB\d{5,}|\bcritical\b') { $skipped++; continue }
+            if ($title -notmatch '^Windows (?:\d|Server\b)') { $skipped++; continue }
             $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
             $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')
             $rowArch = if ($archCell.Success) { $archCell.Groups[1].Value.Trim().ToLowerInvariant() } else { '' }
@@ -552,26 +590,47 @@ function Find-UupBuild {
         if ($candidates.Count -eq 0) {
             Fail ("Ring '{0}' has no full build for arch '{1}' ({2} servicing entries skipped). Try a category spec or a different ring." -f $ring, $archN, $skipped)
         }
+
+        # <category>@<ring>: restrict to the requested product line
+        if ($ringCategory) {
+            $filtered = @($candidates | Where-Object { Test-RingEntryMatchesCategory -Title $_.title -CategorySlug $ringCategory })
+            if ($filtered.Count -eq 0) {
+                $served = ($candidates | ForEach-Object { '{0} ({1})' -f $_.build, $_.title }) -join ' ; '
+                Fail ("The '{0}' ring currently publishes no full build of '{1}'. The ring currently serves: {2}. Use the bare ring spec for the newest of those, or the category spec '{1}' - the catalogue tracks every published full build of that product line." -f $ring, $ringCategory, $served)
+            }
+            $candidates = $filtered
+        }
+
         $picked = @($candidates | Sort-Object -Property @{Expression = { (Get-UupBuildNumberTuple $_.build)[0] }}, @{Expression = { (Get-UupBuildNumberTuple $_.build)[1] }} -Descending)[0]
         $picked['ring'] = $ring
+        if ($ringCategory) { $picked['category'] = $ringCategory }
         Write-Log ("Resolved build on ring '{0}': {1}  [{2}]" -f $ring, $picked.build, $picked.title)
         return $picked
     }
 
-    # --- latest / latest:<category> / <build number> ----------------------
+    # --- <category> / <build number> ---------------------------------------
+    # NOTE: the bare `latest` form is deliberately not supported - the
+    # catalogue spans multiple product lines (Windows 11 / 10 / Server), so
+    # "newest across everything" is ill-defined; callers specify a
+    # category (product line) or a ring (channel) explicitly.
+    if ($specLower -eq 'latest' -or $specLower -match '^latest[:@]') {
+        $rewritten = $specLower -replace '^latest[:@]', ''
+        if ($rewritten) {
+            Fail ("The 'latest' keyword is not used - the spec form itself denotes the newest build. Write the category or ring directly: '{0}' becomes '{1}'" -f $spec, $rewritten)
+        }
+        Fail ("The 'latest' keyword is not used - the spec form itself denotes the newest build. Write a category (e.g. w11-25h2) or a ring (e.g. retail) directly. The bare form is also ill-defined: the catalogue spans multiple product lines.")
+    }
     $query = $null
     $category = $null
     $exactBuild = $null
-    if ($spec -eq 'latest') {
-        $query = 'sort=1'
-    } elseif ($spec -match '^latest:(.+)$') {
-        $category = $Matches[1].Trim().ToLowerInvariant()
-        $query = ('q=category%3A{0}&sort=1' -f (Get-UrlEncoded $category))
-    } elseif ($spec -match '^(\d+\.\d+)$') {
+    if ($specLower -match '^(\d+\.\d+)$') {
         $exactBuild = $Matches[1]
         $query = ('q={0}&sort=1' -f (Get-UrlEncoded $exactBuild))
+    } elseif ($specLower -match '^[a-z0-9][a-z0-9-]*$') {
+        $category = $specLower
+        $query = ('q=category%3A{0}&sort=1' -f (Get-UrlEncoded $category))
     } else {
-        Fail ("Unrecognised build spec '{0}'. Use: latest | latest:<category> | <build number> | <GUID> | uupdump URL" -f $spec)
+        Fail ("Unrecognised build spec '{0}'. Use: <category> (e.g. w11-25h2) | <category>@<ring> (e.g. w11-24h2@retail) | <ring> (e.g. retail) | <build number> | <GUID> | uupdump URL" -f $spec)
     }
 
     $uri = "https://uupdump.net/known.php?$query"
@@ -591,9 +650,11 @@ function Find-UupBuild {
     $skipped = 0
     foreach ($m in $matchesAll) {
         $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
-        # Skip servicing entries: they carry a KB article number ("... Update
-        # - KB5137003") or are Critical OOBE updates; full builds do not.
-        if ($title -match '(?i)KB\d{5,}|\bcritical\b') { $skipped++; continue }
+        # Only full builds qualify: their titles start with "Windows 11/10"
+        # or "Windows Server" (this covers "Feature Update" entries too);
+        # servicing entries (KB updates, critical OOBE updates, server
+        # hotpatches) never start with "Windows".
+        if ($title -notmatch '^Windows (?:\d|Server\b)') { $skipped++; continue }
         # Extract the arch cell that follows this row
         $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
         $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')

@@ -8,10 +8,11 @@ Runs inside the scheduled `watch.yml` job (or manual watch dispatch):
      workflow (fetched from the `watch` orphan branch); a missing file or
      branch falls back to the built-in defaults:
         { "window": "17:00-21:00+0800", "max_parallel": 2,
-          "targets": [ { "build": "latest:w11-25h2", "arch": "amd64",
+          "targets": [ { "build": "w11-25h2", "arch": "amd64",
                          "language": "zh-cn", "editions": "professional" }, ... ] }
   2. Checks the local time is inside the daily window.
-  3. For every target resolves `latest:<category>` to a concrete build and
+  3. For every target resolves the build spec (category / ring / category@ring)
+     to a concrete build and
      computes its tag. Targets whose release tag already exists are skipped
      (idempotent - no state files needed).
   4. Emits a GitHub Actions matrix for the downstream build jobs.
@@ -37,8 +38,8 @@ $defaultConfig = [ordered]@{
     window      = '17:00-21:00+0800'
     max_parallel = 2
     targets     = @(
-        @{ build = 'latest:w11-25h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' },
-        @{ build = 'latest:w11-24h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' }
+        @{ build = 'w11-25h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' },
+        @{ build = 'w11-24h2'; arch = 'amd64'; language = 'zh-cn'; editions = 'professional' }
     )
 }
 

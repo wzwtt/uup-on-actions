@@ -5,7 +5,7 @@ the release tag + persisted job state.
 
 .DESCRIPTION
 Inputs (normally forwarded from the workflow, defaults for local testing):
-  -BuildSpec       latest | latest:<category> | <build> | <GUID> | uupdump URL
+  -BuildSpec       <category> | <ring> | <category>@<ring> | <build> | <GUID> | uupdump URL
   -Arch            amd64 / arm64 / x86
   -Language        uupdump language code (zh-cn, en-us, ...)
   -Editions        comma separated edition list
@@ -21,7 +21,7 @@ Writes:
   - State file: full normalised input set for later phases
 #>
 param(
-    [string]$BuildSpec = 'latest',
+    [string]$BuildSpec = 'retail',
     [string]$Arch = 'amd64',
     [string]$Language = 'zh-cn',
     [string]$Editions = 'professional',

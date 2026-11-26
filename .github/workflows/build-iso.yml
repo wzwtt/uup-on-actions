@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       build:
-        description: 'latest | latest:<category> | latest:<ring> | <build number> | <GUID> | uupdump URL'
+        description: '<category> | <category>@<ring> | <ring> | <build number> | <GUID> | uupdump URL'
         required: true
-        default: 'latest'
+        default: 'retail'
       arch:
         description: 'Target architecture'
         type: choice
@@ -102,10 +102,10 @@ on:
   workflow_call:
     inputs:
       build:
-        description: 'latest | latest:<category> | latest:<ring> | <build number> | <GUID> | uupdump URL'
+        description: '<category> | <category>@<ring> | <ring> | <build number> | <GUID> | uupdump URL'
         type: string
         required: true
-        default: 'latest'
+        default: 'retail'
       arch:
         type: string
         required: true

@@ -8,8 +8,10 @@ Inputs (normally forwarded from the workflow, defaults for local testing):
   -BuildSpec       <category> | <ring> | <category>@<ring> | <build> | <GUID> | uupdump URL
   -Arch            amd64 / arm64 / x86
   -Language        uupdump language code (zh-cn, en-us, ...)
-  -Editions        comma separated edition list
-  -VirtualEditions comma separated virtual editions (empty = disabled)
+  -Editions        comma separated edition list ('all' = every base edition
+                   the build offers)
+  -VirtualEditions comma separated virtual editions ('all' = every virtual
+                   edition the build offers; empty = disabled)
   -Esd             top-level esd input ('true'/'false')
   -Options         multi-line Key=Value options text
   -Mirrors         buzzheavier / release+buzzheavier
@@ -49,12 +51,11 @@ if ($language -match '[,;]') {
 if ($language -notmatch '^[a-z]{2,3}(-[a-z]{2,8}(-[a-z]{2,8})?)?$') {
     Write-LogWarn ("language '{0}' does not look like a standard uupdump language code - continuing, the package generation will validate it" -f $language)
 }
-$editionsList = ConvertTo-List $Editions
-if ($editionsList.Count -eq 0) { Fail 'editions input is empty - provide at least one edition' }
-if (($Editions -replace '\s','') -match '(?:^|,)(?:$|,)') {
-    Fail ("editions input '{0}' contains an empty element - remove empty entries between commas" -f $Editions)
+if ($Editions -and ($Editions.Trim().ToLowerInvariant() -notin @('all','*'))) {
+    if (($Editions -replace '\s','') -match '(?:^|,)(?:$|,)') {
+        Fail ("editions input '{0}' contains an empty element - remove empty entries between commas" -f $Editions)
+    }
 }
-$virtualList = @(ConvertTo-List $VirtualEditions)
 $optionsMap = ConvertFrom-OptionsText $Options
 $esdBool = ConvertTo-Bool $Esd
 $dryRunBool = ConvertTo-Bool $DryRun
@@ -74,15 +75,34 @@ if (-not $buildNo) {
     $buildNo = ('guid-' + $found.guid.Substring(0, 8))
 }
 
+# --- expand the edition selections against the build -------------------------
+# 'all' resolves to the build's own checkbox set, so the image always carries
+# every edition the build offers at run time.
+$editionsList = Resolve-UupEditionList -EditionsInput $Editions -Guid $found.guid -Language $language
+if ($editionsList.Count -eq 0) { Fail 'editions input is empty - provide at least one edition (or "all")' }
+$virtualList = @(Resolve-UupVirtualEditionList -VirtualInput $VirtualEditions -Guid $found.guid -Language $language)
+Write-Log ("Editions        : {0}" -f ($editionsList -join ', '))
+Write-Log ("Virtual editions: {0}" -f ($(if ($virtualList.Count) { $virtualList -join ', ' } else { '(none)' })))
+
 # --- final option set --------------------------------------------------------
 $defaults = Get-UupDefaultOptions
 $finalOptions = Merge-UupOptions -Defaults $defaults -EsdInput ([string]$esdBool) -UserOptions $optionsMap
 
+# --- tag inputs ---------------------------------------------------------------
+# The tag reflects the requested selection rather than the expanded set. The
+# watch job computes tags without querying uupdump for the edition list, so both
+# sides must derive the tag from the same information; the editions actually
+# written into the image are recorded in the manifest and the release notes.
+$tagEditions = $editionsList
+$tagVirtual = @($virtualList)
+if ($Editions -and ($Editions.Trim().ToLowerInvariant() -in @('all', '*'))) { $tagEditions = @('all') }
+if ($VirtualEditions -and ($VirtualEditions.Trim().ToLowerInvariant() -in @('all', '*'))) { $tagVirtual = @('all') }
+
 # --- tag ----------------------------------------------------------------------
 $tagSuffix = ''
 if ($optionsMap.Contains('tag_suffix')) { $tagSuffix = [string]$optionsMap['tag_suffix'] }
-$tag = Get-UupTag -Build $buildNo -Arch $archN -Language $language -Editions $editionsList `
-    -VirtualEditions $virtualList -FinalOptions $finalOptions -TagSuffix $tagSuffix
+$tag = Get-UupTag -Build $buildNo -Arch $archN -Language $language -Editions $tagEditions `
+    -VirtualEditions $tagVirtual -FinalOptions $finalOptions -TagSuffix $tagSuffix
 
 Write-Log ("Build : {0}" -f $found.title)
 Write-Log ("GUID  : {0}" -f $found.guid)

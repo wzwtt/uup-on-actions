@@ -677,6 +677,83 @@ function Find-UupBuild {
 }
 
 # ---------------------------------------------------------------------------
+# Edition discovery: the 'all' wildcard resolves to whatever the build offers
+# ---------------------------------------------------------------------------
+
+function Get-UupAvailableEditions {
+    <# Base editions offered by a build for a language - the edition[]
+       checkbox values on the build's edition selection page. #>
+    param(
+        [Parameter(Mandatory)][string]$Guid,
+        [Parameter(Mandatory)][string]$Language
+    )
+    $uri = ('https://uupdump.net/selectedition.php?id={0}&pack={1}' -f $Guid, $Language)
+    Write-Log ("Discovering base editions: {0}" -f $uri)
+    $resp = Invoke-UupRequest -Uri $uri
+    $html = [string]$resp.Content
+    $editions = @()
+    foreach ($m in [regex]::Matches($html, '<input[^>]*type="checkbox"[^>]*name="edition\[\]"[^>]*value="([^"]+)"')) {
+        $v = $m.Groups[1].Value.Trim().ToLowerInvariant()
+        if ($v) { $editions += $v }
+    }
+    if ($editions.Count -eq 0) {
+        Fail ("No base editions found for build {0} / language {1} - the edition selection page returned none. Check the build's uupdump pages." -f $Guid, $Language)
+    }
+    return @($editions | Sort-Object)
+}
+
+function Get-UupAvailableVirtualEditions {
+    <# Virtual editions offered by a build - the virtualEditions[] checkbox
+       values on the download page. May be empty when the build offers none;
+       the caller decides whether that is acceptable. #>
+    param(
+        [Parameter(Mandatory)][string]$Guid,
+        [Parameter(Mandatory)][string]$Language
+    )
+    $uri = ('https://uupdump.net/download.php?id={0}&pack={1}' -f $Guid, $Language)
+    Write-Log ("Discovering virtual editions: {0}" -f $uri)
+    $resp = Invoke-UupRequest -Uri $uri
+    $html = [string]$resp.Content
+    $virtual = @()
+    foreach ($m in [regex]::Matches($html, '<input[^>]*type="checkbox"[^>]*name="virtualEditions\[\]"[^>]*value="([^"]+)"')) {
+        $v = $m.Groups[1].Value.Trim()
+        if ($v) { $virtual += $v }
+    }
+    # preserve the page's casing - the converter writes these values into
+    # ConvertConfig.ini verbatim
+    return @($virtual | Sort-Object)
+}
+
+function Resolve-UupEditionList {
+    <# 'all' (or '*') expands to the build's base editions; otherwise the
+       literal comma list is used. #>
+    param(
+        [AllowNull()][string]$EditionsInput,
+        [Parameter(Mandatory)][string]$Guid,
+        [Parameter(Mandatory)][string]$Language
+    )
+    if ($EditionsInput -and ($EditionsInput.Trim().ToLowerInvariant() -in @('all', '*'))) {
+        return @(Get-UupAvailableEditions -Guid $Guid -Language $Language)
+    }
+    return @(ConvertTo-List $EditionsInput)
+}
+
+function Resolve-UupVirtualEditionList {
+    <# 'all' (or '*') expands to the build's virtual editions; otherwise the
+       literal comma list (case preserved - the converter expects page casing). #>
+    param(
+        [AllowNull()][string]$VirtualInput,
+        [Parameter(Mandatory)][string]$Guid,
+        [Parameter(Mandatory)][string]$Language
+    )
+    if ($VirtualInput -and ($VirtualInput.Trim().ToLowerInvariant() -in @('all', '*'))) {
+        return @(Get-UupAvailableVirtualEditions -Guid $Guid -Language $Language)
+    }
+    if (-not $VirtualInput -or -not $VirtualInput.Trim()) { return @() }
+    return @($VirtualInput.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+# ---------------------------------------------------------------------------
 # Tag computation. Tag layout:
 #   <build>-<arch>-<lang>-<editions-sorted-joined-with-dash>[+ve][-<hash4>][suffix]
 # +ve  = virtual editions were appended to the ISO

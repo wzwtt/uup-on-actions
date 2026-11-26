@@ -46,20 +46,22 @@ schedule (watch) ──┘                                            download &
 
 ## Manual build — input reference
 
-Ten inputs are defined for the manual run; the default combination selects the newest full build, `amd64`, `zh-cn`, professional edition. `arch`, `language` and `mirrors` are rendered as dropdown selections (their value sets are stable); the remaining inputs are text fields.
+Ten inputs are defined for the manual run; the default combination selects the newest full build on the retail ring, `amd64`, `zh-cn`, professional edition. `arch`, `language` and `mirrors` are rendered as dropdown selections (their value sets are stable); the remaining inputs are text fields.
 
 ### `build`
 
+The spec identifies a product line or an update channel explicitly; "newest" is implied by the form itself — a specific older build is requested by build number, GUID, or URL. The catalogue spans multiple product lines (Windows 11 / Windows 10 / Windows Server), so no cross-product-line "newest of everything" form exists.
+
 | Form | Example | Semantics |
 |---|---|---|
-| `latest` | `latest` | Newest full build across all categories; catalogue entries whose titles denote servicing updates or critical hotfixes are excluded. |
-| `latest:<category>` | `latest:w11-25h2` | Newest full build within the given category. |
-| `latest:<ring>` | `latest@retail` | Newest full build published on an update ring, resolved through uupdump's ring query (fetchupd.php) against Microsoft update servers. |
+| `<category>` | `w11-25h2` | Newest full build within the given category. |
+| `<ring>` | `retail` | Newest full build currently published on an update ring, resolved through uupdump's ring query (fetchupd.php) against Microsoft update servers. |
+| `<category>@<ring>` | `w11-24h2@retail` | Newest full build of that product line on that ring — among the builds the ring currently serves, the one matching the category's product line. When the ring serves none, the run fails with the ring's current offerings. |
 | `<build number>` | `26200.10075` | Build selected by exact build number. |
 | `<GUID>` | `bb653e4f-2f06-4aa6-9994-d5c692e24009` | Direct reference to a uupdump build id. |
 | URL | `https://uupdump.net/selectlang.php?id=…` | Any uupdump.net URL containing `id=<GUID>`; the GUID is extracted automatically. |
 
-Rings accepted by the `latest@<ring>` form (uupdump fetchupd.php values, with aliases):
+Rings accepted by the `<ring>` and `<category>@<ring>` forms (uupdump fetchupd.php values, with aliases):
 
 | Ring | Meaning | Accepted aliases |
 |---|---|---|
@@ -70,7 +72,7 @@ Rings accepted by the `latest@<ring>` form (uupdump fetchupd.php values, with al
 | `beta` | Beta channel | — |
 | `canary` | Canary channel | — |
 
-The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected (servicing entries — those carrying a KB article number or marked Critical — are excluded).
+The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected. Full builds are identified by their titles (beginning with "Windows 11", "Windows 10" or "Windows Server"); servicing entries — cumulative and .NET updates, critical OOBE updates, server hotpatches — are excluded. For the `<category>@<ring>` form, the product-line match applies to the version designation in the entry title; insider ring entries whose titles carry no version designation are therefore matched by the bare `<ring>` form only.
 
 Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Current values:
 
@@ -250,7 +252,7 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
   "max_parallel": 2,
   "targets": [
     {
-      "build": "latest:w11-25h2",
+      "build": "w11-25h2",
       "arch": "amd64",
       "language": "zh-cn",
       "editions": "professional",
@@ -261,7 +263,7 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
       "draft": "false"
     },
     {
-      "build": "latest:w11-24h2",
+      "build": "w11-24h2",
       "arch": "amd64",
       "language": "zh-cn",
       "editions": "professional,core",
@@ -276,7 +278,7 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 | `window` | no | `17:00-21:00+0800` | Daily activation window, `HH:MM-HH:MM±offset`; overnight windows (e.g. `22:00-06:00+0800`) are supported. |
 | `max_parallel` | no | `2` | Maximum number of concurrent build jobs per cycle. |
 | `targets` | yes | *(see above)* | Monitoring targets; each target's fields correspond to the manual build inputs of the same names. |
-| `targets[].build` | yes | — | Typically `latest:<category>`. |
+| `targets[].build` | yes | — | Typically a category (e.g. `w11-25h2`) or `<category>@<ring>`; accepts every build spec form. |
 | `targets[].arch` / `language` / `editions` | no | `amd64` / `zh-cn` / `professional` | As in the manual build. |
 | `targets[].virtual_editions` | no | *(empty)* | As in the manual build. |
 | `targets[].esd` | no | `"false"` | String boolean. |

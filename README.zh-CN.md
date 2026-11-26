@@ -46,20 +46,22 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 
 ## 手动构建——输入字段参考
 
-手动运行共定义十项输入；默认组合选择最新的完整构建、`amd64`、`zh-cn`、专业版。`arch`、`language` 与 `mirrors` 呈现为下拉选择（取值集合稳定）；其余输入为文本字段。
+手动运行共定义十项输入；默认组合选择 retail 通道最新的完整构建、`amd64`、`zh-cn`、专业版。`arch`、`language` 与 `mirrors` 呈现为下拉选择（取值集合稳定）；其余输入为文本字段。
 
 ### `build`
 
+spec 显式指定产品线或更新通道；“最新”内在于形式本身——需要较旧的具体构建时，以构建号、GUID 或 URL 指定。目录覆盖多条产品线（Windows 11 / Windows 10 / Windows Server），故不存在跨产品线的“全目录最新”形式。
+
 | 形式 | 示例 | 语义 |
 |---|---|---|
-| `latest` | `latest` | 全分类中最新的完整构建；目录中标题表明为服务性更新或关键修补的条目被排除。 |
-| `latest:<category>` | `latest:w11-25h2` | 指定分类内最新的完整构建。 |
-| `latest:<ring>` | `latest@retail` | 指定更新通道上最新的完整构建；经 uupdump 的通道查询（fetchupd.php）向微软更新服务器解析。 |
+| `<category>` | `w11-25h2` | 指定分类内最新的完整构建。 |
+| `<ring>` | `retail` | 指定更新通道上当前发布的最新完整构建；经 uupdump 的通道查询（fetchupd.php）向微软更新服务器解析。 |
+| `<category>@<ring>` | `w11-24h2@retail` | 指定产品线在该通道上的最新完整构建——在通道当前发布的构建中选取与分类产品线匹配者；通道未发布该产品线时，运行失败并告知通道当前内容。 |
 | `<构建号>` | `26200.10075` | 按构建号精确匹配。 |
 | `<GUID>` | `bb653e4f-2f06-4aa6-9994-d5c692e24009` | 直接引用 uupdump 构建编号。 |
 | URL | `https://uupdump.net/selectlang.php?id=…` | 任意含 `id=<GUID>` 的 uupdump.net 链接；GUID 被自动提取。 |
 
-`latest@<ring>` 形式接受的通道（uupdump fetchupd.php 取值及别名）：
+`<ring>` 与 `<category>@<ring>` 形式接受的通道（uupdump fetchupd.php 取值及别名）：
 
 | 通道 | 含义 | 接受的别名 |
 |---|---|---|
@@ -70,7 +72,7 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 | `beta` | Beta 通道 | — |
 | `canary` | Canary 通道 | — |
 
-通道查询返回相应通道当前的同步更新状态；在返回条目中选取最新的完整构建（服务性条目——带 KB 编号或标记为 Critical 的条目——被排除）。
+通道查询返回相应通道当前的同步更新状态；在返回条目中选取最新的完整构建。完整构建依标题判定（以 "Windows 11"、"Windows 10" 或 "Windows Server" 开头）；服务性条目——累积更新、.NET 更新、Critical OOBE 更新、服务器热修补——被排除。`<category>@<ring>` 形式按条目标题中的版本号判定产品线匹配；标题不含版本号的 Insider 通道条目仅适用于 `<ring>` 形式。
 
 分类与 uupdump 下载页的筛选器一致（该页面为权威来源，分类可能随时间演进）。当前取值：
 
@@ -250,7 +252,7 @@ tag_suffix=test
   "max_parallel": 2,
   "targets": [
     {
-      "build": "latest:w11-25h2",
+      "build": "w11-25h2",
       "arch": "amd64",
       "language": "zh-cn",
       "editions": "professional",
@@ -261,7 +263,7 @@ tag_suffix=test
       "draft": "false"
     },
     {
-      "build": "latest:w11-24h2",
+      "build": "w11-24h2",
       "arch": "amd64",
       "language": "zh-cn",
       "editions": "professional,core",
@@ -276,7 +278,7 @@ tag_suffix=test
 | `window` | 否 | `17:00-21:00+0800` | 每日生效窗口，`HH:MM-HH:MM±偏移`；支持跨零点窗口（如 `22:00-06:00+0800`）。 |
 | `max_parallel` | 否 | `2` | 每周期内并发构建任务的上限。 |
 | `targets` | 是 | （见上文） | 监测目标数组；各目标字段与手动构建同名输入一一对应。 |
-| `targets[].build` | 是 | — | 通常为 `latest:<category>`。 |
+| `targets[].build` | 是 | — | 通常为分类（如 `w11-25h2`）或 `<category>@<ring>`；接受全部构建 spec 形式。 |
 | `targets[].arch` / `language` / `editions` | 否 | `amd64` / `zh-cn` / `professional` | 同手动构建。 |
 | `targets[].virtual_editions` | 否 | （空） | 同手动构建。 |
 | `targets[].esd` | 否 | `"false"` | 字符串布尔值。 |

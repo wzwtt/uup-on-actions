@@ -46,7 +46,7 @@ schedule (watch) ──┘                                            download &
 
 ## Manual build — input reference
 
-Ten inputs are defined for the manual run; the default combination selects the newest full build on the retail ring, `amd64`, `zh-cn`, professional edition. `arch`, `language` and `mirrors` are rendered as dropdown selections (their value sets are stable); the remaining inputs are text fields.
+Ten inputs are defined for the manual run; the default combination selects the newest full build on the retail ring, `amd64`, `zh-cn`, professional edition. `arch`, `language`, `mirrors` and `release_state` are rendered as dropdown selections (their value sets are stable); the remaining inputs are text fields.
 
 ### `build`
 
@@ -116,6 +116,8 @@ Comma-separated list of target editions; multiple editions are assembled into a 
 
 The available set varies per build and per language (e.g. the China edition appears only for Chinese builds, N editions only where applicable); the edition selection page of the build is authoritative. A `dry_run` invocation confirms that a combination is accepted.
 
+`all` (or `*`) selects every base edition the build offers for the chosen language. The set is read from the build's edition selection page at run time, so the image carries whatever the build provides when it is assembled; the resolved set is recorded in the release notes and in `manifest.json`.
+
 ### `virtual_editions`
 
 Comma-separated list of additional virtual editions, generated with DISM after conversion (uupdump `autodl=3` mode). Any non-empty value enables the feature; an empty value disables it. Virtual editions add selectable editions to the image without re-downloading the payload; the available set likewise varies per build and follows the "Select additional editions" checkbox set on the download page.
@@ -130,6 +132,8 @@ Comma-separated list of additional virtual editions, generated with DISM after c
 | `ServerRdsh` | Enterprise multi-session / Virtual Desktops |
 | `IoTEnterprise` | IoT Enterprise |
 | `IoTEnterpriseK` | IoT Enterprise Subscription |
+
+`all` (or `*`) selects every virtual edition the download page offers for the build; the resolved set is recorded in the release notes and in `manifest.json`.
 
 ### `esd`
 
@@ -147,11 +151,15 @@ Comma-separated list of additional virtual editions, generated with DISM after c
 
 ### `dry_run`
 
-Validates the combination (package generation, plus a query against the uupdump API reporting file count and estimated payload size) without transferring payload data.
+Validates the combination (package generation, plus per-edition queries against the uupdump API reporting file counts and estimated payload sizes) without transferring payload data.
 
-### `draft`
+### `release_state`
 
-The release is created in draft state and requires manual publication.
+| Value | Effect |
+|---|---|
+| `release` (default) | The release is published. |
+| `prerelease` | The release is marked as a pre-release. |
+| `draft` | The release is created in draft state and requires manual publication. |
 
 ### `options`
 
@@ -231,11 +239,12 @@ tag_suffix=test
 | architecture | `amd64` | Always |
 | language | `zh-cn` | Always |
 | editions | `core-professional` | Always (alphabetically sorted) |
+| `all` | `all` | The selection was given as `all`; the expanded set is recorded in the release notes |
 | `+ve` | `+ve` | Virtual editions enabled |
 | option hash | `-5ea0` | Any conversion option differing from the default combination; a four-hex-digit digest of the option set |
 | suffix | `-hotfix` | `tag_suffix` supplied |
 
-A run resolving to an existing tag terminates early; an existing release is only rebuilt when `force=true`.
+A run resolving to an existing tag terminates early; an existing release is only rebuilt when `force=true`. The tag is computed from the requested selection rather than from the expanded edition set, so that the watch cycle can derive the same tag without querying the edition list, and so that repeated cycles remain idempotent.
 
 ## Scheduled monitoring
 
@@ -251,22 +260,23 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
   "max_parallel": 2,
   "targets": [
     {
-      "build": "w11-25h2",
+      "build": "retail",
       "arch": "amd64",
       "language": "zh-cn",
-      "editions": "professional",
-      "virtual_editions": "",
+      "editions": "all",
+      "virtual_editions": "all",
       "esd": "false",
       "mirrors": "buzzheavier",
       "options": "",
-      "draft": "false"
+      "release_state": "release"
     },
     {
-      "build": "w11-24h2",
+      "build": "beta",
       "arch": "amd64",
-      "language": "zh-cn",
-      "editions": "professional,core",
-      "options": "esd=true"
+      "language": "en-us",
+      "editions": "all",
+      "virtual_editions": "all",
+      "release_state": "prerelease"
     }
   ]
 }
@@ -277,13 +287,13 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 | `window` | no | `17:00-21:00+0800` | Daily activation window, `HH:MM-HH:MM±offset`; overnight windows (e.g. `22:00-06:00+0800`) are supported. |
 | `max_parallel` | no | `2` | Maximum number of concurrent build jobs per cycle. |
 | `targets` | yes | *(see above)* | Monitoring targets; each target's fields correspond to the manual build inputs of the same names. |
-| `targets[].build` | yes | — | Typically a category (e.g. `w11-25h2`) or `<category>@<ring>`; accepts every build spec form. |
-| `targets[].arch` / `language` / `editions` | no | `amd64` / `zh-cn` / `professional` | As in the manual build. |
-| `targets[].virtual_editions` | no | *(empty)* | As in the manual build. |
+| `targets[].build` | yes | — | Typically a ring (e.g. `retail`, `beta`) or `<category>@<ring>`; accepts every build spec form. |
+| `targets[].arch` / `language` / `editions` | no | `amd64` / `zh-cn` / `professional` | As in the manual build; `editions` also accepts `all`. |
+| `targets[].virtual_editions` | no | *(empty)* | As in the manual build; accepts `all`. |
 | `targets[].esd` | no | `"false"` | String boolean. |
 | `targets[].mirrors` | no | `buzzheavier` | As in the manual build. |
 | `targets[].options` | no | *(empty)* | As in the manual build; multiple records encoded as `\n` within the JSON string. |
-| `targets[].draft` | no | `"false"` | String boolean. |
+| `targets[].release_state` | no | `release` | `release` / `prerelease` / `draft`, as in the manual build. |
 
 The configuration file resides at `watch:uup-watch.json` in the repository; the branch also carries a README describing its purpose.
 
@@ -298,7 +308,7 @@ Manual invocation of the watch workflow accepts a `bypass_window` input that dis
 Each build produces one release:
 
 - `SHA256SUMS.txt` — the ISO SHA-256 digest.
-- `manifest.json` — structured record: tag, build, title, GUID, architecture, language, editions, virtual editions, effective options, ISO name, size, SHA-256, mirror URL and upload timestamp, release volumes (when applicable), generation timestamp, workflow run URL, data source, and the evaluation-use disclaimer.
+- `manifest.json` — structured record: tag, release state, build, title, GUID, architecture, language, editions, virtual editions, effective options, ISO name, size, SHA-256, mirror URL and upload timestamp, release volumes (when applicable), generation timestamp, workflow run URL, data source, and the evaluation-use disclaimer.
 - Release body — the metadata summary, checksum, retrieval instructions, non-default option summary, and legal notice.
 - The buzzheavier URL of the single-file ISO.
 - With `mirrors=release+buzzheavier`: volumes `<name>.7z.001` … (each at most 1900 MB). The original ISO is recovered with `7z x <name>.7z.001`; per-volume digests are recorded in `manifest.json`.
@@ -322,6 +332,7 @@ Peak disk usage on the runner is 25–35 GB (payload, image, temporary files); f
 |---|---|
 | Non-429 client errors (HTTP 4xx) | Not retried; when uupdump returns an error page (e.g. an unsupported language or an invalid language/edition combination), its message is reported verbatim. |
 | Rate limiting on uupdump (HTTP 429/403) | Exponential backoff (5/15/45 s), up to three attempts per request. |
+| Multi-edition payload estimate (`dry_run`) | The metadata API accepts one edition per request; editions are queried individually (first six, when more are selected) and reported per edition, since shared files appear in every listing. |
 | Cloudflare challenge on the catalogue page | Backoff and retry; on persistent failure the run terminates with remediation guidance (direct GUID/URL input bypasses the catalogue page); watch cycles skip the affected target. |
 | Conversion failure | The download script is re-executed once; aria2 resumes from partial data. |
 | ISO below 1 GiB | Rejected prior to publication as a suspected incomplete conversion. |

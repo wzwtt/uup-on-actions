@@ -46,7 +46,7 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 
 ## 手动构建——输入字段参考
 
-手动运行共定义十项输入；默认组合选择 retail 通道最新的完整构建、`amd64`、`zh-cn`、专业版。`arch`、`language` 与 `mirrors` 呈现为下拉选择（取值集合稳定）；其余输入为文本字段。
+手动运行共定义十项输入；默认组合选择 retail 通道最新的完整构建、`amd64`、`zh-cn`、专业版。`arch`、`language`、`mirrors` 与 `release_state` 呈现为下拉选择（取值集合稳定）；其余输入为文本字段。
 
 ### `build`
 
@@ -116,6 +116,8 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 
 可用集合随构建与语言而异（如家庭中文版仅出现于中文构建，N 版仅在适用处出现）；以构建的版本选择页为准。`dry_run` 调用可确认组合是否被接受。
 
+`all`（或 `*`）选取该构建对所选语言提供的全部基础版本。集合在运行时自构建的版本选择页读取，因而镜像载有该构建当时提供的全部版本；实际展开的集合记录于 Release 说明与 `manifest.json`。
+
 ### `virtual_editions`
 
 以逗号分隔的附加虚拟版本列表，在转换后经 DISM 生成（对应 uupdump 的 `autodl=3` 模式）。任何非空取值启用该特性；空值表示禁用。虚拟版本在不重新下载载荷的前提下为镜像增加可选版本；可用集合同样随构建而异，对应下载页“Select additional editions”复选框集合。
@@ -130,6 +132,8 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 | `ServerRdsh` | 企业多会话 / 虚拟桌面版 |
 | `IoTEnterprise` | IoT 企业版 |
 | `IoTEnterpriseK` | IoT 企业订阅版 |
+
+`all`（或 `*`）选取下载页对该构建提供的全部虚拟版本；实际展开的集合记录于 Release 说明与 `manifest.json`。
 
 ### `esd`
 
@@ -147,11 +151,15 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 
 ### `dry_run`
 
-在不传输载荷数据的前提下验证组合（生成下载包，并向 uupdump API 查询文件数与预计载荷体积）。
+在不传输载荷数据的前提下验证组合（生成下载包，并逐版本向 uupdump API 查询文件数与预计载荷体积）。
 
-### `draft`
+### `release_state`
 
-Release 以草稿状态创建，需手动发布。
+| 取值 | 效果 |
+|---|---|
+| `release`（默认） | Release 正常发布。 |
+| `prerelease` | Release 标记为预发布。 |
+| `draft` | Release 以草稿状态创建，需手动发布。 |
 
 ### `options`
 
@@ -231,11 +239,12 @@ tag_suffix=test
 | 架构 | `amd64` | 恒有 |
 | 语言 | `zh-cn` | 恒有 |
 | 版本 | `core-professional` | 恒有（按字母排序） |
+| `all` | `all` | 版本以 `all` 给出时出现；展开后的集合记录于 Release 说明 |
 | `+ve` | `+ve` | 启用虚拟版本 |
 | 选项哈希 | `-5ea0` | 任一转换选项偏离默认组合时出现；为选项集的四位十六进制摘要 |
 | 后缀 | `-hotfix` | 提供了 `tag_suffix` |
 
-解析结果与既有标签一致的运行将提前终止；仅当 `force=true` 时对既有 Release 予以重建。
+解析结果与既有标签一致的运行将提前终止；仅当 `force=true` 时对既有 Release 予以重建。标签依据所请求的选择而非展开后的版本集合计算，以便监测周期在未查询版本列表的情形下推导出相同的标签，并使相邻周期间的判定保持幂等。
 
 ## 定时监测
 
@@ -251,22 +260,23 @@ tag_suffix=test
   "max_parallel": 2,
   "targets": [
     {
-      "build": "w11-25h2",
+      "build": "retail",
       "arch": "amd64",
       "language": "zh-cn",
-      "editions": "professional",
-      "virtual_editions": "",
+      "editions": "all",
+      "virtual_editions": "all",
       "esd": "false",
       "mirrors": "buzzheavier",
       "options": "",
-      "draft": "false"
+      "release_state": "release"
     },
     {
-      "build": "w11-24h2",
+      "build": "beta",
       "arch": "amd64",
-      "language": "zh-cn",
-      "editions": "professional,core",
-      "options": "esd=true"
+      "language": "en-us",
+      "editions": "all",
+      "virtual_editions": "all",
+      "release_state": "prerelease"
     }
   ]
 }
@@ -277,13 +287,13 @@ tag_suffix=test
 | `window` | 否 | `17:00-21:00+0800` | 每日生效窗口，`HH:MM-HH:MM±偏移`；支持跨零点窗口（如 `22:00-06:00+0800`）。 |
 | `max_parallel` | 否 | `2` | 每周期内并发构建任务的上限。 |
 | `targets` | 是 | （见上文） | 监测目标数组；各目标字段与手动构建同名输入一一对应。 |
-| `targets[].build` | 是 | — | 通常为分类（如 `w11-25h2`）或 `<category>@<ring>`；接受全部构建 spec 形式。 |
-| `targets[].arch` / `language` / `editions` | 否 | `amd64` / `zh-cn` / `professional` | 同手动构建。 |
-| `targets[].virtual_editions` | 否 | （空） | 同手动构建。 |
+| `targets[].build` | 是 | — | 通常为通道（如 `retail`、`beta`）或 `<category>@<ring>`；接受全部构建 spec 形式。 |
+| `targets[].arch` / `language` / `editions` | 否 | `amd64` / `zh-cn` / `professional` | 同手动构建；`editions` 另可取值 `all`。 |
+| `targets[].virtual_editions` | 否 | （空） | 同手动构建；可取值 `all`。 |
 | `targets[].esd` | 否 | `"false"` | 字符串布尔值。 |
 | `targets[].mirrors` | 否 | `buzzheavier` | 同手动构建。 |
 | `targets[].options` | 否 | （空） | 同手动构建；多条记录以 JSON 字符串内的 `\n` 编码。 |
-| `targets[].draft` | 否 | `"false"` | 字符串布尔值。 |
+| `targets[].release_state` | 否 | `release` | `release` / `prerelease` / `draft`，同手动构建。 |
 
 配置文件位于仓库中的 `watch:uup-watch.json`；该分支另载有说明其用途的 README。
 
@@ -298,7 +308,7 @@ tag_suffix=test
 每次构建产生一个 Release：
 
 - `SHA256SUMS.txt` —— ISO 的 SHA-256 摘要。
-- `manifest.json` —— 结构化记录：标签、构建号、标题、GUID、架构、语言、版本、虚拟版本、生效选项、ISO 文件名、体积、SHA-256、镜像 URL 与上传时间戳、分卷信息（如适用）、生成时间戳、工作流运行链接、数据来源，以及评估用途声明。
+- `manifest.json` —— 结构化记录：标签、发布状态、构建号、标题、GUID、架构、语言、版本、虚拟版本、生效选项、ISO 文件名、体积、SHA-256、镜像 URL 与上传时间戳、分卷信息（如适用）、生成时间戳、工作流运行链接、数据来源，以及评估用途声明。
 - Release 正文 —— 元数据摘要、校验值、获取说明、非默认选项汇总与法律声明。
 - 单一文件 ISO 的 buzzheavier URL。
 - 当 `mirrors=release+buzzheavier` 时：`<名称>.7z.001`… 各分卷（单卷不超过 1900 MB）。原始 ISO 可经 `7z x <名称>.7z.001` 还原；各分卷摘要记录于 `manifest.json`。
@@ -322,6 +332,7 @@ tag_suffix=test
 |---|---|
 | 非 429 的客户端错误（HTTP 4xx） | 不重试；uupdump 返回错误页（如不支持的语言、非法的语言/版本组合）时，原文透出其错误信息。 |
 | uupdump 限流（HTTP 429/403） | 指数退避（5/15/45 秒），每请求最多三次尝试。 |
+| 多版本载荷估算（`dry_run`） | 元数据 API 每请求只接受一个版本；各版本逐一查询（选中数超过六个时取前六个）并逐版本报告，因为共用文件会出现在每个版本的清单中。 |
 | 目录页出现 Cloudflare 质询 | 退避重试；持续失败时运行终止并给出处置指引（GUID/URL 直输可绕过目录页）；监测周期跳过受影响目标。 |
 | 转换失败 | 重新执行一次下载脚本；aria2 自断点续传。 |
 | ISO 低于 1 GiB | 视为疑似不完整转换，在发布前拒绝。 |

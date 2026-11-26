@@ -46,7 +46,7 @@ schedule (watch) ──┘                                            download &
 
 ## Manual build — input reference
 
-Ten inputs are defined for the manual run; the default combination selects the newest full build, `amd64`, `zh-cn`, professional edition.
+Ten inputs are defined for the manual run; the default combination selects the newest full build, `amd64`, `zh-cn`, professional edition. `arch`, `language` and `mirrors` are rendered as dropdown selections (their value sets are stable); the remaining inputs are text fields.
 
 ### `build`
 
@@ -54,9 +54,23 @@ Ten inputs are defined for the manual run; the default combination selects the n
 |---|---|---|
 | `latest` | `latest` | Newest full build across all categories; catalogue entries whose titles denote servicing updates or critical hotfixes are excluded. |
 | `latest:<category>` | `latest:w11-25h2` | Newest full build within the given category. |
+| `latest:<ring>` | `latest@retail` | Newest full build published on an update ring, resolved through uupdump's ring query (fetchupd.php) against Microsoft update servers. |
 | `<build number>` | `26200.10075` | Build selected by exact build number. |
 | `<GUID>` | `bb653e4f-2f06-4aa6-9994-d5c692e24009` | Direct reference to a uupdump build id. |
 | URL | `https://uupdump.net/selectlang.php?id=…` | Any uupdump.net URL containing `id=<GUID>`; the GUID is extracted automatically. |
+
+Rings accepted by the `latest@<ring>` form (uupdump fetchupd.php values, with aliases):
+
+| Ring | Meaning | Accepted aliases |
+|---|---|---|
+| `retail` | Public Release channel | `public`, `release` |
+| `rp` | Release Preview channel | `preview`, `releasepreview` |
+| `wif` | Insider Fast channel | `fast`, `insiderfast` |
+| `wis` | Insider Slow channel | `slow`, `insiderslow` |
+| `beta` | Beta channel | — |
+| `canary` | Canary channel | — |
+
+The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected (servicing entries — those carrying a KB article number or marked Critical — are excluded).
 
 Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Current values:
 
@@ -83,7 +97,7 @@ When `build` is given as a GUID or URL, a mismatch between the build's actual ar
 
 ### `language`
 
-Any language code supported by uupdump for the selected build. The authoritative list is presented on the build's language selection page. Common codes include `zh-cn`, `zh-tw`, `en-us`, `en-gb`, `ja-jp`, `ko-kr`, `de-de`, `fr-fr`, `ru-ru`, `es-es`, `pt-br`, `it-it`. An unsupported combination fails during package generation, before payload transfer begins.
+A single uupdump language code (dropdown). The selection corresponds to the language list of uupdump builds: `zh-cn`, `zh-tw`, `en-us`, `en-gb`, `ja-jp`, `ko-kr`, `de-de`, `fr-fr`, `fr-ca`, `ru-ru`, `es-es`, `es-mx`, `pt-br`, `pt-pt`, `it-it`, `nl-nl`, `pl-pl`, `cs-cz`, `sv-se`, `da-dk`, `fi-fi`, `nb-no`, `et-ee`, `lv-lv`, `lt-lt`, `bg-bg`, `hr-hr`, `el-gr`, `hu-hu`, `ro-ro`, `sk-sk`, `sl-si`, `sr-latn-rs`, `uk-ua`, `he-il`, `ar-sa`, `th-th`, `tr-tr`, `vi-vn`, `id-id`, and `neutral` (any language). The set of languages available for a particular build is presented on that build's language selection page; an unsupported combination fails during package generation, before payload transfer begins, with the uupdump error message.
 
 ### `editions`
 
@@ -305,6 +319,7 @@ Peak disk usage on the runner is 25–35 GB (payload, image, temporary files); f
 
 | Condition | Handling |
 |---|---|
+| Non-429 client errors (HTTP 4xx) | Not retried; when uupdump returns an error page (e.g. an unsupported language or an invalid language/edition combination), its message is reported verbatim. |
 | Rate limiting on uupdump (HTTP 429/403) | Exponential backoff (5/15/45 s), up to three attempts per request. |
 | Cloudflare challenge on the catalogue page | Backoff and retry; on persistent failure the run terminates with remediation guidance (direct GUID/URL input bypasses the catalogue page); watch cycles skip the affected target. |
 | Conversion failure | The download script is re-executed once; aria2 resumes from partial data. |

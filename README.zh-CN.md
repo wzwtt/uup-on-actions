@@ -46,17 +46,31 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 
 ## 手动构建——输入字段参考
 
-手动运行共定义十项输入；默认组合选择最新的完整构建、`amd64`、`zh-cn`、专业版。
+手动运行共定义十项输入；默认组合选择最新的完整构建、`amd64`、`zh-cn`、专业版。`arch`、`language` 与 `mirrors` 呈现为下拉选择（取值集合稳定）；其余输入为文本字段。
 
 ### `build`
 
 | 形式 | 示例 | 语义 |
 |---|---|---|
-| `latest` | `latest` | 全分类中最新的完整构建；目录中标题表明为累积更新或关键修补的条目被排除。 |
+| `latest` | `latest` | 全分类中最新的完整构建；目录中标题表明为服务性更新或关键修补的条目被排除。 |
 | `latest:<category>` | `latest:w11-25h2` | 指定分类内最新的完整构建。 |
+| `latest:<ring>` | `latest@retail` | 指定更新通道上最新的完整构建；经 uupdump 的通道查询（fetchupd.php）向微软更新服务器解析。 |
 | `<构建号>` | `26200.10075` | 按构建号精确匹配。 |
 | `<GUID>` | `bb653e4f-2f06-4aa6-9994-d5c692e24009` | 直接引用 uupdump 构建编号。 |
 | URL | `https://uupdump.net/selectlang.php?id=…` | 任意含 `id=<GUID>` 的 uupdump.net 链接；GUID 被自动提取。 |
+
+`latest@<ring>` 形式接受的通道（uupdump fetchupd.php 取值及别名）：
+
+| 通道 | 含义 | 接受的别名 |
+|---|---|---|
+| `retail` | 正式发布（Public Release）通道 | `public`、`release` |
+| `rp` | Release Preview 通道 | `preview`、`releasepreview` |
+| `wif` | Insider Fast 通道 | `fast`、`insiderfast` |
+| `wis` | Insider Slow 通道 | `slow`、`insiderslow` |
+| `beta` | Beta 通道 | — |
+| `canary` | Canary 通道 | — |
+
+通道查询返回相应通道当前的同步更新状态；在返回条目中选取最新的完整构建（服务性条目——带 KB 编号或标记为 Critical 的条目——被排除）。
 
 分类与 uupdump 下载页的筛选器一致（该页面为权威来源，分类可能随时间演进）。当前取值：
 
@@ -83,7 +97,7 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 
 ### `language`
 
-所选构建支持的任意 uupdump 语言代码；权威列表见该构建的语言选择页。常用代码包括 `zh-cn`、`zh-tw`、`en-us`、`en-gb`、`ja-jp`、`ko-kr`、`de-de`、`fr-fr`、`ru-ru`、`es-es`、`pt-br`、`it-it`。不受支持的组合在下载包生成阶段失败，早于载荷传输。
+单一 uupdump 语言代码（下拉选择）。取值集合与 uupdump 构建的语言列表一致：`zh-cn`、`zh-tw`、`en-us`、`en-gb`、`ja-jp`、`ko-kr`、`de-de`、`fr-fr`、`fr-ca`、`ru-ru`、`es-es`、`es-mx`、`pt-br`、`pt-pt`、`it-it`、`nl-nl`、`pl-pl`、`cs-cz`、`sv-se`、`da-dk`、`fi-fi`、`nb-no`、`et-ee`、`lv-lv`、`lt-lt`、`bg-bg`、`hr-hr`、`el-gr`、`hu-hu`、`ro-ro`、`sk-sk`、`sl-si`、`sr-latn-rs`、`uk-ua`、`he-il`、`ar-sa`、`th-th`、`tr-tr`、`vi-vn`、`id-id`，以及 `neutral`（任意语言）。特定构建可用的语言集合以其语言选择页为准；不受支持的组合在下载包生成阶段失败，早于载荷传输，并附 uupdump 的错误信息。
 
 ### `editions`
 
@@ -305,6 +319,7 @@ tag_suffix=test
 
 | 条件 | 处理 |
 |---|---|
+| 非 429 的客户端错误（HTTP 4xx） | 不重试；uupdump 返回错误页（如不支持的语言、非法的语言/版本组合）时，原文透出其错误信息。 |
 | uupdump 限流（HTTP 429/403） | 指数退避（5/15/45 秒），每请求最多三次尝试。 |
 | 目录页出现 Cloudflare 质询 | 退避重试；持续失败时运行终止并给出处置指引（GUID/URL 直输可绕过目录页）；监测周期跳过受影响目标。 |
 | 转换失败 | 重新执行一次下载脚本；aria2 自断点续传。 |

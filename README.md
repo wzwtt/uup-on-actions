@@ -37,7 +37,7 @@ Produced images are intended for evaluation purposes only; see the [Legal notice
 | File | Trigger | Function |
 |---|---|---|
 | `.github/workflows/build-iso.yml` | manual (`workflow_dispatch`), or invoked by the watch workflow | A single build; all build parameters are exposed as inputs. |
-| `.github/workflows/watch.yml` | `schedule` (two-hour interval) and manual | Resolves monitored uupdump targets, dispatches one concurrent build job per new target, and summarises the outcomes once all builds finish. |
+| `.github/workflows/watch.yml` | `schedule` (three cycles a day) and manual | Resolves monitored uupdump targets, dispatches one concurrent build job per new target, and summarises the outcomes once all builds finish. |
 | `.github/workflows/ci.yml` | `push`/`pull_request` on code changes; manual; weekly `schedule` | Runs the Pester unit-test suite; the weekly schedule (and manual dispatch with the `catalogue` input) additionally probes which catalogue categories currently provide full builds. |
 
 ```
@@ -76,7 +76,7 @@ Rings accepted by the `<ring>` and `<category>@<ring>` forms (uupdump fetchupd.p
 
 The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected. Full builds are identified by their titles (beginning with "Windows 11", "Windows 10" or "Windows Server"); servicing entries — cumulative and .NET updates, critical OOBE updates, server hotpatches — are excluded. For the `<category>@<ring>` form, the product-line match applies to the version designation in the entry title; insider ring entries whose titles carry no version designation are therefore matched by the bare `<ring>` form only.
 
-Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). The table lists the categories that currently provide downloadable full builds, as verified by the catalogue health probe (`scripts/Probe-UupCategories.ps1`; last verified 2026-11-26):
+Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Full builds appear under two title families — entries beginning with "Windows 11 / 10 / Server" and entries beginning with "Feature update to Windows …", the form the catalogue uses for the Windows 10 branches (e.g. `Feature update to Windows 10, version 1809 (17763.9487) amd64`). The table is verified by the catalogue health probe (`scripts/Probe-UupCategories.ps1`; last verified 2026-11-27):
 
 | Category | Product line |
 |---|---|
@@ -87,8 +87,9 @@ Categories correspond to the filter on the uupdump Downloads page (that page is 
 | `w11-24h2-beta` / `w11-24h2` | Windows 11 24H2, beta / stable |
 | `w11-23h2` / `w11-22h2` / `w11-21h2` | Windows 11 23H2 / 22H2 / 21H2 |
 | `server-24h2` / `server-23h2` | Windows Server, by release year |
+| `w10-22h2` / `w10-21h2` / `w10-1809` | Windows 10 22H2 / 21H2 / 1809 |
 
-Categories that currently provide no full builds are excluded from the table: `server-22h2`, `server-21h2`, `w10-22h2`, `w10-21h2` and `w10-1809`. Their catalogue entries are servicing-only (cumulative and .NET updates): the catalogue keeps full-build entries only while Microsoft's servers synchronise them, and full builds of retired product lines are no longer synchronised. A build spec against such a category fails at resolution with an explicit message naming the skipped servicing-entry count; builds of retired product lines can still be requested by build number or GUID while their entries remain in the catalogue.
+Two categories currently provide no full builds and are excluded from the table: `server-22h2` and `server-21h2`. Their catalogue entries are servicing-only (cumulative and .NET updates) — the server branches do not re-sync feature-update entries after their servicing moves to the cumulative channel, unlike the Windows 10 branches, whose feature-update entries keep being refreshed. A build spec against such a category fails at resolution with an explicit message naming the skipped servicing-entry count; builds of those branches can still be requested by build number or GUID while their entries remain in the catalogue.
 
 ### `arch`
 
@@ -251,7 +252,7 @@ A run resolving to an existing tag terminates early; an existing release is only
 
 ## Scheduled monitoring
 
-`watch.yml` is scheduled every two hours. GitHub Actions cron expressions admit no per-run parameterisation and may drift; the planning script therefore enforces its own daily window against the configuration.
+`watch.yml` runs three times a day (01:00, 09:00 and 17:00 +0800). How often the catalogue is checked is a property of the cron cadence alone — there is no additional time-window gating; idempotent tags make overlapping cycles harmless, so the cadence can be adjusted freely in the workflow file.
 
 ### Configuration
 
@@ -259,7 +260,6 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 
 ```json
 {
-  "window": "17:00-21:00+0800",
   "targets": [
     {
       "build": "retail",
@@ -286,7 +286,6 @@ The monitoring configuration is the file `uup-watch.json`, stored on the `watch`
 
 | Field | Required | Default | Description |
 |---|---|---|---|
-| `window` | no | `17:00-21:00+0800` | Daily activation window, `HH:MM-HH:MM±offset`; overnight windows (e.g. `22:00-06:00+0800`) are supported. |
 | `targets` | yes | *(see above)* | Monitoring targets; each target's fields correspond to the manual build inputs of the same names. |
 | `targets[].build` | yes | — | Typically a ring (e.g. `retail`, `beta`) or `<category>@<ring>`; accepts every build spec form. |
 | `targets[].arch` / `language` / `editions` | no | `amd64` / `zh-cn` / `professional` | As in the manual build; `editions` also accepts `all`. |
@@ -306,7 +305,7 @@ Each queued target becomes a separate build job and therefore a separate runner;
 
 Once every build job has finished — successfully or not — an aggregation job collects the outcomes and writes one table to the run summary: for each planned target, the release state (`release` / `prerelease` / `draft`, or not published) and the release link. A tag that is absent from the table's published states indicates that its build did not complete; the corresponding job log carries the reason.
 
-Manual invocation accepts two inputs: `bypass_window` (default `true` for manual runs, so a manual cycle acts immediately instead of waiting for the window) and `plan_only` (default `false`), which resolves and reports the targets in the run summary without dispatching builds. Scheduled cycles always respect the window; when one runs outside it, the summary states the window and the current local time, and a warning annotation is added to the run.
+Manual invocation accepts one input: `plan_only` (default `false`) resolves and reports the targets in the run summary without dispatching builds.
 
 ## Published artifacts
 

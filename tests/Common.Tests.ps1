@@ -87,6 +87,27 @@ Describe 'Test-RingEntryMatchesCategory' {
     }
 }
 
+Describe 'Test-UupFullBuildTitle' {
+    It 'accepts the Windows/Server title families' {
+        Test-UupFullBuildTitle 'Windows 11, version 25H2 (26200.10075) amd64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Windows Server 2025 (26100.33822) amd64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Windows 11 Insider Preview Feature Update (26220.9836) arm64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Windows 11 (22000.3260) arm64' | Should -BeTrue
+    }
+    It 'accepts the Feature-update title form used by the Windows 10 branches' {
+        Test-UupFullBuildTitle 'Feature update to Windows 10, version 1809 (17763.9487) amd64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Feature update to Windows 10, version 22H2 (19045.7850) amd64' | Should -BeTrue
+    }
+    It 'rejects servicing entries regardless of their prefix' {
+        Test-UupFullBuildTitle 'Cumulative Update for Windows 10 Version 1809 (17763.9488) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle 'Cumulative Update for Windows Server 2019 (1809) (17763.9487) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle 'Servicing Stack Update for Windows 10, version 1809 (17763.1) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle '.NET Framework 3.5 and 4.8.1 for Windows 11 (26100.1) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle '2026-02 Cumulative Update for Windows 11 (26200.1) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle '26100.33732 Security Update (Hotpatch capable) amd64' | Should -BeFalse
+    }
+}
+
 Describe 'ConvertFrom-OptionsText' {
     It 'parses Key=Value records with comments and blank lines' {
         $map = ConvertFrom-OptionsText "resetbase = true`n`n# a comment`ncleanup=1"

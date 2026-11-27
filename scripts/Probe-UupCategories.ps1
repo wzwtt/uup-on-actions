@@ -4,19 +4,17 @@ Catalogue health probe - checks which uupdump categories currently provide
 full builds for download.
 
 .DESCRIPTION
-The uupdump catalogue keeps full-build entries only while Microsoft's update
-servers still synchronise them; retired product lines (e.g. the Windows 10
-branches, Server 2019/2022) keep their categories but the entries become
-servicing-only (cumulative and .NET updates). A category in that state yields
-no downloadable full build, and every build spec against it fails at
-resolution time.
+Full-build entries are identified by Test-UupFullBuildTitle (Windows/Server
+prefixes and the "Feature update to Windows …" form that the Windows 10
+branches use). A category whose entries are all servicing-only yields no
+downloadable full build, and every build spec against it fails at resolution
+time.
 
 This script queries the catalogue page of each configured category and
 reports, per category: total entries, full builds, servicing entries, the
 architectures among the full builds, and the newest full build. Categories
 without any full build are reported with a warning annotation, so the
-documented category table can be kept in step with the catalogue ("auto
-exclusion": the table lists only categories that provide downloads).
+documented category table can be kept in step with the catalogue.
 
 The result is written to the step summary when running inside GitHub Actions
 ($env:GITHUB_STEP_SUMMARY) and to stdout otherwise. The script exits 0 in
@@ -35,7 +33,9 @@ param(
     [string[]]$Categories = @(
         'future', 'w11-26h2-experimental', 'w11-26h2', 'w11-26h1',
         'w11-25h2-beta', 'w11-25h2', 'w11-24h2-beta', 'w11-24h2',
-        'w11-23h2', 'w11-22h2', 'w11-21h2', 'server-24h2', 'server-23h2'
+        'w11-23h2', 'w11-22h2', 'w11-21h2',
+        'server-24h2', 'server-23h2', 'server-22h2', 'server-21h2',
+        'w10-22h2', 'w10-21h2', 'w10-1809'
     )
 )
 
@@ -65,9 +65,8 @@ foreach ($cat in $Categories) {
     $newest = ''
     foreach ($m in $entries) {
         $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
-        # same full-build rule as Find-UupBuild: titles beginning with
-        # "Windows 11 / 10 / Server"; servicing entries never do
-        if ($title -notmatch '^Windows (?:\d|Server\b)') { $servicing++; continue }
+        # same full-build rule as Find-UupBuild
+        if (-not (Test-UupFullBuildTitle $title)) { $servicing++; continue }
         $full++
         $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
         $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')
@@ -80,7 +79,7 @@ foreach ($cat in $Categories) {
     Write-Log ("{0}: {1} entries, {2} full builds ({3})" -f $cat, $entries.Count, $full, $archList)
     if ($full -eq 0) {
         Write-LogWarn ("{0}: the category currently provides no downloadable full build - build specs against it fail at resolution" -f $cat)
-        Write-Host ("::warning::Catalogue category '{0}' currently provides no downloadable full build - exclude it from the documented category table." -f $cat)
+        Write-Host ("::warning::Catalogue category '{0}' currently provides no downloadable full build - check whether it should be excluded from the documented category table." -f $cat)
     }
     Start-Sleep -Seconds 3
 }

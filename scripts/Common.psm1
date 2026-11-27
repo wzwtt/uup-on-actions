@@ -495,7 +495,9 @@ function Test-RingEntryMatchesCategory {
        denoted by a category slug (e.g. w11-24h2, server-24h2,
        w11-26h2-experimental). The version core of the slug (24h2, 1809, …)
        must appear in the entry title; the family prefix (w11 / w10 / server)
-       constrains the title family accordingly. Insider ring entries whose
+       constrains the title family accordingly (the family token may appear
+       anywhere in the title, since Windows 10 branches title their full
+       builds "Feature update to Windows 10, …"). Insider ring entries whose
        titles carry no version designation never match. #>
     param([string]$Title, [string]$CategorySlug)
 
@@ -516,36 +518,29 @@ function Test-RingEntryMatchesCategory {
     }
     if (-not $coreMatched) { return $false }
     switch ($family) {
-        'w11'    { if ($Title -notmatch '^Windows 11\b') { return $false } }
-        'w10'    { if ($Title -notmatch '^Windows 10\b') { return $false } }
+        'w11'    { if ($Title -notmatch '(?i)\bwindows 11\b') { return $false } }
+        'w10'    { if ($Title -notmatch '(?i)\bwindows 10\b') { return $false } }
         'server' { if ($Title -notmatch '(?i)\bserver\b') { return $false } }
     }
     return $true
 }
 
-function Test-UupWindow {
-    <# Whether <Now> falls inside the daily activation window expressed as
-       'HH:MM-HH:MM+HHMM' (overnight windows, e.g. '22:00-06:00+0800', are
-       supported). Returns @{ InWindow; LocalNow; Window }. Fails on a
-       malformed window - a silently ignored window would make every cycle a
-       no-op. Pure function; unit-tested. #>
-    param(
-        [Parameter(Mandatory)][string]$Window,
-        [Parameter(Mandatory)][datetime]$Now
-    )
-    if ($Window -notmatch '^(\d{2}:\d{2})-(\d{2}:\d{2})([+-]\d{4})$') {
-        Fail ("Invalid window format '{0}' - expected e.g. '17:00-21:00+0800'" -f $Window)
-    }
-    $startStr = $Matches[1]; $endStr = $Matches[2]; $offset = $Matches[3]
-    $offHours = [int]$offset.Substring(0, 3)
-    $offMin = [int]$offset.Substring(3, 2) * [Math]::Sign($offHours)
-    $local = $Now.ToUniversalTime().AddHours($offHours).AddMinutes($offMin)
-    $nowMin = $local.Hour * 60 + $local.Minute
-    $startMin = ([int]$startStr.Split(':')[0]) * 60 + [int]$startStr.Split(':')[1]
-    $endMin = ([int]$endStr.Split(':')[0]) * 60 + [int]$endStr.Split(':')[1]
-    $inWindow = if ($startMin -le $endMin) { ($nowMin -ge $startMin -and $nowMin -lt $endMin) }
-                 else { ($nowMin -ge $startMin -or $nowMin -lt $endMin) }   # overnight window
-    return @{ InWindow = $inWindow; LocalNow = $local; Window = $Window }
+function Test-UupFullBuildTitle {
+    <# Whether a catalogue entry title denotes a full build (an image source)
+       rather than a servicing entry. Full builds appear under two title
+       families: entries beginning with "Windows 11 / 10 / Server" (including
+       insider feature updates), and entries beginning with "Feature update
+       to Windows …" - the form the catalogue uses for the Windows 10
+       branches (e.g. "Feature update to Windows 10, version 1809
+       (17763.9487) amd64"). Cumulative updates, servicing stack updates,
+       security updates, .NET updates and hotpatch entries never denote full
+       builds and are rejected regardless of their prefix. Pure function;
+       unit-tested. #>
+    param([Parameter(Mandatory)][string]$Title)
+    if ($Title -match '(?i)(cumulative update|servicing stack update|security update|\.net framework|hotpatch|features and locked)') { return $false }
+    if ($Title -match '^\s*Windows (?:\d|Server\b)') { return $true }
+    if ($Title -match '(?i)^\s*Feature update to Windows') { return $true }
+    return $false
 }
 
 function Find-UupBuild {
@@ -613,16 +608,12 @@ function Find-UupBuild {
         if ($matchesAll.Count -eq 0) {
             Fail ("Ring '{0}' returned no builds for arch '{1}'. The ring may be dormant at the moment - try another ring or a category." -f $ring, $archN)
         }
-        # Collect full builds only. Full builds are titled
-        # "Windows 11, version …" / "Windows 10, version …" / "Windows
-        # Server, version …" / "Windows 11 Insider Preview Feature Update …";
-        # servicing entries (cumulative updates, .NET updates, critical OOBE
-        # updates, server hotpatches) never start with "Windows".
+        # Collect full builds only - see Test-UupFullBuildTitle.
         $candidates = @()
         $skipped = 0
         foreach ($m in $matchesAll) {
             $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
-            if ($title -notmatch '^Windows (?:\d|Server\b)') { $skipped++; continue }
+            if (-not (Test-UupFullBuildTitle $title)) { $skipped++; continue }
             $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
             $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')
             $rowArch = if ($archCell.Success) { $archCell.Groups[1].Value.Trim().ToLowerInvariant() } else { '' }
@@ -694,11 +685,10 @@ function Find-UupBuild {
     $skipped = 0
     foreach ($m in $matchesAll) {
         $title = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
-        # Only full builds qualify: their titles start with "Windows 11/10"
-        # or "Windows Server" (this covers "Feature Update" entries too);
-        # servicing entries (KB updates, critical OOBE updates, server
-        # hotpatches) never start with "Windows".
-        if ($title -notmatch '^Windows (?:\d|Server\b)') { $skipped++; continue }
+        # Only full builds qualify - see Test-UupFullBuildTitle. The Windows 10
+        # branches title their full builds "Feature update to Windows 10, …",
+        # which a Windows/Server-prefix test alone would misclassify.
+        if (-not (Test-UupFullBuildTitle $title)) { $skipped++; continue }
         # Extract the arch cell that follows this row
         $after = $html.Substring($m.Index + $m.Length, [Math]::Min(400, $html.Length - $m.Index - $m.Length))
         $archCell = [regex]::Match($after, '</td><td class="collapsing">\s*(.*?)\s*</td>')

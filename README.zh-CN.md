@@ -76,7 +76,7 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 
 通道查询返回相应通道当前的同步更新状态；在返回条目中选取最新的完整构建。完整构建依标题判定，包括两个标题族——以 "Windows 11 / 10 / Server" 开头的条目（含 Insider 功能更新），以及 Windows 10 分支采用的 "Feature update to Windows …" 形式；服务性条目——累积更新、.NET 更新、安全更新、维护堆栈更新、服务器热修补——被排除。`<category>@<ring>` 形式按条目标题中的版本号判定产品线匹配；标题不含版本号的 Insider 通道条目仅适用于 `<ring>` 形式。
 
-分类与 uupdump 下载页的筛选器一致（该页面为权威来源，分类可能随时间演进）。完整构建的标题分为两个族——以 "Windows 11 / 10 / Server" 开头的条目，以及 Windows 10 分支采用的 "Feature update to Windows …" 形式（如 `Feature update to Windows 10, version 1809 (17763.9487) amd64`）。分类表经目录健康探测（`scripts/Probe-UupCategories.ps1`）核实；最近核实日期 2026-11-27：
+分类与 uupdump 下载页的筛选器一致（该页面为权威来源，分类可能随时间演进）。完整构建的标题分为两个族——以 "Windows 11 / 10 / Server" 开头的条目，以及 Windows 10 分支采用的 "Feature update to Windows …" 形式（如 `Feature update to Windows 10, version 1809 (17763.9487) amd64`）。分类表最近核对日期 2026-11-27：
 
 | 分类 | 分支 |
 |---|---|
@@ -352,7 +352,7 @@ tag_suffix=test
 main 分支：
 .github/workflows/build-iso.yml    构建工作流（手动与被调用）
 .github/workflows/watch.yml        定时监测工作流
-.github/workflows/ci.yml           单元测试；每周目录健康探测
+.github/workflows/ci.yml           单元测试（Pester）
 scripts/Common.psm1                日志、HTTP 重试、选项模式、标签计算、目录解析
 scripts/Resolve-UupBuild.ps1      阶段一——输入解析与标签计算
 scripts/New-UupPackage.ps1        阶段二——下载包生成、修补、依赖预取、预检
@@ -360,7 +360,6 @@ scripts/Invoke-UupConvert.ps1     阶段三——载荷下载、转换、校验
 scripts/Publish-UupIso.ps1        阶段四——镜像验证、摘要、镜像上传、Release 创建、摘要输出
 scripts/Watch-UupBuilds.ps1       定时周期——目标解析与矩阵规划
 scripts/Summarise-UupCycle.ps1    定时周期——构建结束后的结果汇总
-scripts/Probe-UupCategories.ps1   目录健康探测——哪些分类仍提供完整构建
 tests/Common.Tests.ps1            Common.psm1 纯逻辑的 Pester 单元测试
 
 watch 分支（孤儿）：

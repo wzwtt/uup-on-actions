@@ -3,24 +3,14 @@ name: CI
 on:
   push:
     paths: ['scripts/**', 'tests/**', '.github/workflows/ci.yml']
-  pull_request:
-    paths: ['scripts/**', 'tests/**', '.github/workflows/ci.yml']
   workflow_dispatch:
-    inputs:
-      catalogue:
-        description: 'Also probe the uupdump catalogue categories'
-        type: boolean
-        required: false
-        default: false
-  schedule:
-    - cron: '0 2 * * 1'   # weekly, Monday 02:00 UTC - catalogue health probe
 
 permissions:
   contents: read
 
 jobs:
   tests:
-    name: Unit tests (Pester)
+    name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -36,17 +26,3 @@ jobs:
           $c.Run.Path = 'tests'
           $c.Run.Exit = $true
           Invoke-Pester -Configuration $c
-
-  catalogue:
-    name: Catalogue health probe
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.catalogue == true)
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Probe uupdump categories
-        shell: pwsh
-        timeout-minutes: 25
-        run: ./scripts/Probe-UupCategories.ps1

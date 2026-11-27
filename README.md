@@ -76,7 +76,7 @@ Rings accepted by the `<ring>` and `<category>@<ring>` forms (uupdump fetchupd.p
 
 The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected. Full builds are identified by their titles (beginning with "Windows 11", "Windows 10", "Windows Server", or "Feature update to …"); servicing entries — cumulative and .NET updates, critical OOBE updates, server hotpatches — are excluded. For the `<category>@<ring>` form, the product-line match applies to the version designation in the entry title; insider ring entries whose titles carry no version designation are therefore matched by the bare `<ring>` form only.
 
-Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Full builds appear under two title families — entries beginning with "Windows 11 / 10 / Server", and entries beginning with "Feature update to <product line>", the form the catalogue uses for branches whose full builds are re-synced as feature updates: the Windows 10 client branches (e.g. `Feature update to Windows 10, version 1809 (17763.9487) amd64`), the Windows Server branches (e.g. `Feature update to Microsoft server operating system, version 21H2 (20348.5870) amd64`) and Azure Stack HCI (e.g. `Feature update to Azure Stack HCI, version 22H2 (20349.3692) amd64`). The table is verified by the catalogue health probe (`scripts/Probe-UupCategories.ps1`; last verified 2026-11-27):
+Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Full builds appear under two title families — entries beginning with "Windows 11 / 10 / Server", and entries beginning with "Feature update to <product line>", the form the catalogue uses for branches whose full builds are re-synced as feature updates: the Windows 10 client branches (e.g. `Feature update to Windows 10, version 1809 (17763.9487) amd64`), the Windows Server branches (e.g. `Feature update to Microsoft server operating system, version 21H2 (20348.5870) amd64`) and Azure Stack HCI (e.g. `Feature update to Azure Stack HCI, version 22H2 (20349.3692) amd64`). The table was last verified against the catalogue on 2026-11-27:
 
 | Category | Product line |
 |---|---|
@@ -352,7 +352,7 @@ Peak disk usage on the runner is 25–35 GB (payload, image, temporary files); f
 main branch:
 .github/workflows/build-iso.yml    Build workflow (manual and called)
 .github/workflows/watch.yml        Scheduled monitoring workflow
-.github/workflows/ci.yml           Unit tests; weekly catalogue health probe
+.github/workflows/ci.yml           Unit tests (Pester)
 scripts/Common.psm1                Logging, HTTP retry, option schema, tag computation, catalogue resolution
 scripts/Resolve-UupBuild.ps1      Stage 1 — input resolution and tag computation
 scripts/New-UupPackage.ps1        Stage 2 — package generation, patching, dependency pre-fetch, pre-flight
@@ -360,7 +360,6 @@ scripts/Invoke-UupConvert.ps1     Stage 3 — payload download, conversion, veri
 scripts/Publish-UupIso.ps1        Stage 4 — image verification, digest, mirror upload, release creation, summary
 scripts/Watch-UupBuilds.ps1       Scheduled cycle — target resolution and matrix planning
 scripts/Summarise-UupCycle.ps1    Scheduled cycle — outcome aggregation after the builds
-scripts/Probe-UupCategories.ps1   Catalogue health probe — which categories still provide full builds
 tests/Common.Tests.ps1            Pester unit tests for the pure logic in Common.psm1
 
 watch branch (orphan):

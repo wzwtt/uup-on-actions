@@ -67,7 +67,14 @@ Describe 'Test-RingEntryMatchesCategory' {
     }
     It 'matches Server marketing years to their version cores' {
         Test-RingEntryMatchesCategory -Title 'Windows Server 2025 (26100.1) amd64' -CategorySlug 'server-24h2' | Should -BeTrue
-        Test-RingEntryMatchesCategory -Title 'Windows Server 2022 (20348.1) amd64' -CategorySlug 'server-22h2' | Should -BeTrue
+        Test-RingEntryMatchesCategory -Title 'Windows Server 2022 (20348.1) amd64' -CategorySlug 'server-21h2' | Should -BeTrue
+        Test-RingEntryMatchesCategory -Title 'Windows Server 2022 (20348.1) amd64' -CategorySlug 'server-22h2' | Should -BeFalse
+    }
+    It 'matches the Feature-update title form of the Server branches' {
+        Test-RingEntryMatchesCategory -Title 'Feature update to Microsoft server operating system, version 21H2 (20348.5870) amd64' -CategorySlug 'server-21h2' | Should -BeTrue
+        Test-RingEntryMatchesCategory -Title 'Feature update to Azure Stack HCI, version 22H2 (20349.3692) amd64' -CategorySlug 'server-22h2' | Should -BeTrue
+        Test-RingEntryMatchesCategory -Title 'Feature update to Azure Stack HCI, version 21H2 (20348.5870) amd64' -CategorySlug 'server-21h2' | Should -BeTrue
+        Test-RingEntryMatchesCategory -Title 'Feature update to Azure Stack HCI, version 23H2 (25398.2330) amd64' -CategorySlug 'server-22h2' | Should -BeFalse
     }
     It 'rejects other families and version cores' {
         Test-RingEntryMatchesCategory -Title 'Windows 10, version 22H2 (19045.1) amd64' -CategorySlug 'w11-22h2' | Should -BeFalse
@@ -94,17 +101,23 @@ Describe 'Test-UupFullBuildTitle' {
         Test-UupFullBuildTitle 'Windows 11 Insider Preview Feature Update (26220.9836) arm64' | Should -BeTrue
         Test-UupFullBuildTitle 'Windows 11 (22000.3260) arm64' | Should -BeTrue
     }
-    It 'accepts the Feature-update title form used by the Windows 10 branches' {
+    It 'accepts the Feature-update title form across product lines' {
         Test-UupFullBuildTitle 'Feature update to Windows 10, version 1809 (17763.9487) amd64' | Should -BeTrue
         Test-UupFullBuildTitle 'Feature update to Windows 10, version 22H2 (19045.7850) amd64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Feature update to Microsoft server operating system, version 21H2 (20348.5870) amd64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Feature update to Azure Stack HCI, version 22H2 (20349.3692) amd64' | Should -BeTrue
+        Test-UupFullBuildTitle 'Feature update to Azure Stack HCI, version 23H2, dev build (25398.1) amd64' | Should -BeTrue
     }
     It 'rejects servicing entries regardless of their prefix' {
         Test-UupFullBuildTitle 'Cumulative Update for Windows 10 Version 1809 (17763.9488) amd64' | Should -BeFalse
         Test-UupFullBuildTitle 'Cumulative Update for Windows Server 2019 (1809) (17763.9487) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle 'Cumulative Update for Microsoft server operating system version 21H2 (20348.5873) amd64' | Should -BeFalse
         Test-UupFullBuildTitle 'Servicing Stack Update for Windows 10, version 1809 (17763.1) amd64' | Should -BeFalse
         Test-UupFullBuildTitle '.NET Framework 3.5 and 4.8.1 for Windows 11 (26100.1) amd64' | Should -BeFalse
         Test-UupFullBuildTitle '2026-02 Cumulative Update for Windows 11 (26200.1) amd64' | Should -BeFalse
         Test-UupFullBuildTitle '26100.33732 Security Update (Hotpatch capable) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle 'Security Update for Microsoft server operating system (Hotpatch capable) (26100.33732) amd64' | Should -BeFalse
+        Test-UupFullBuildTitle 'Update for Microsoft server operating system (26100.33828) amd64' | Should -BeFalse
     }
 }
 

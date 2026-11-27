@@ -510,17 +510,22 @@ function Test-RingEntryMatchesCategory {
 
     $coreMatched = $Title -match ('(?i)\b' + [regex]::Escape($core) + '\b')
     if (-not $coreMatched -and $family -eq 'server') {
-        # Server builds carry marketing years rather than version cores:
-        # the 24h2 branch is "Windows Server 2025", the 22h2 branch is
-        # "Windows Server 2022".
-        $year = switch ($core) { '24h2' { '2025' } '22h2' { '2022' } default { $null } }
+        # Server full builds on rings carry marketing years rather than
+        # version cores: the 24h2 branch is "Windows Server 2025", the 21h2
+        # branch is "Windows Server 2022". The 22h2 and 23h2 branches carry
+        # no marketing year - their full builds title themselves as Azure
+        # Stack HCI and keep the version core, so the core match suffices.
+        $year = switch ($core) { '24h2' { '2025' } '21h2' { '2022' } default { $null } }
         if ($year) { $coreMatched = $Title -match ('(?i)\b' + $year + '\b') }
     }
     if (-not $coreMatched) { return $false }
     switch ($family) {
         'w11'    { if ($Title -notmatch '(?i)\bwindows 11\b') { return $false } }
         'w10'    { if ($Title -notmatch '(?i)\bwindows 10\b') { return $false } }
-        'server' { if ($Title -notmatch '(?i)\bserver\b') { return $false } }
+        # Server-family titles may be "Windows Server …", "Feature update to
+        # Microsoft server operating system …" or "Feature update to Azure
+        # Stack HCI …" - the HCI line belongs to the same catalogue family.
+        'server' { if ($Title -notmatch '(?i)(\bserver\b|azure stack hci)') { return $false } }
     }
     return $true
 }
@@ -530,16 +535,21 @@ function Test-UupFullBuildTitle {
        rather than a servicing entry. Full builds appear under two title
        families: entries beginning with "Windows 11 / 10 / Server" (including
        insider feature updates), and entries beginning with "Feature update
-       to Windows …" - the form the catalogue uses for the Windows 10
-       branches (e.g. "Feature update to Windows 10, version 1809
-       (17763.9487) amd64"). Cumulative updates, servicing stack updates,
-       security updates, .NET updates and hotpatch entries never denote full
-       builds and are rejected regardless of their prefix. Pure function;
-       unit-tested. #>
+       to <product line>" - the form the catalogue uses for the Windows 10
+       client branches (e.g. "Feature update to Windows 10, version 1809
+       (17763.9487) amd64"), the Windows Server branches (e.g. "Feature
+       update to Microsoft server operating system, version 21H2
+       (20348.5870) amd64") and Azure Stack HCI (e.g. "Feature update to
+       Azure Stack HCI, version 22H2 (20349.3692) amd64"). Servicing
+       entries - cumulative and .NET updates, servicing stack updates,
+       security updates, hotpatches and plain "Update for …" entries -
+       never begin with either accepted prefix; the leading blacklist stays
+       as a defensive net for any future servicing title that may begin
+       with "Windows". Pure function; unit-tested. #>
     param([Parameter(Mandatory)][string]$Title)
     if ($Title -match '(?i)(cumulative update|servicing stack update|security update|\.net framework|hotpatch|features and locked)') { return $false }
     if ($Title -match '^\s*Windows (?:\d|Server\b)') { return $true }
-    if ($Title -match '(?i)^\s*Feature update to Windows') { return $true }
+    if ($Title -match '(?i)^\s*Feature update to\b') { return $true }
     return $false
 }
 

@@ -68,20 +68,10 @@ if (ConvertTo-Bool $BypassWindow) {
     Write-Log 'Window check bypassed (manual test run)'
 } else {
     $win = [string]$cfg.window
-    if ($win -notmatch '^(\d{2}:\d{2})-(\d{2}:\d{2})([+-]\d{4})$') {
-        Fail ("Invalid window format '{0}' - expected e.g. '17:00-21:00+0800'" -f $win)
-    }
-    $startStr = $Matches[1]; $endStr = $Matches[2]; $offset = $Matches[3]
-    $offHours = [int]$offset.Substring(0, 3)
-    $offMin = [int]$offset.Substring(3, 2) * [Math]::Sign($offHours)
-    $now = (Get-Date).ToUniversalTime().AddHours($offHours).AddMinutes($offMin)
-    $nowMin = $now.Hour * 60 + $now.Minute
-    $startMin = ([int]$startStr.Split(':')[0]) * 60 + [int]$startStr.Split(':')[1]
-    $endMin = ([int]$endStr.Split(':')[0]) * 60 + [int]$endStr.Split(':')[1]
-    $inWindow = if ($startMin -le $endMin) { ($nowMin -ge $startMin -and $nowMin -lt $endMin) }
-                 else { ($nowMin -ge $startMin -or $nowMin -lt $endMin) }   # overnight window
+    $gate = Test-UupWindow -Window $win -Now (Get-Date)
+    $now = $gate.LocalNow
     Write-Log ("Config source: {0}; window {1} (current local time {2:HH:mm})" -f $cfgSource, $win, $now)
-    if (-not $inWindow) {
+    if (-not $gate.InWindow) {
         Write-Log 'Outside the daily window - nothing to do.'
         Write-LogWarn ("No build was dispatched: the cycle is outside the activation window {0} and the current local time is {1:HH:mm}. Scheduled cycles only act inside the window; a manual dispatch passes bypass_window=true for this by default." -f $win, $now)
         Write-Host ("::warning::Outside the activation window {0} (local time {1:HH:mm}) - no build dispatched. Manual dispatch bypasses the window by default." -f $win, $now)

@@ -515,6 +515,31 @@ function Test-RingEntryMatchesCategory {
     return $true
 }
 
+function Test-UupWindow {
+    <# Whether <Now> falls inside the daily activation window expressed as
+       'HH:MM-HH:MM+HHMM' (overnight windows, e.g. '22:00-06:00+0800', are
+       supported). Returns @{ InWindow; LocalNow; Window }. Fails on a
+       malformed window - a silently ignored window would make every cycle a
+       no-op. Pure function; unit-tested. #>
+    param(
+        [Parameter(Mandatory)][string]$Window,
+        [Parameter(Mandatory)][datetime]$Now
+    )
+    if ($Window -notmatch '^(\d{2}:\d{2})-(\d{2}:\d{2})([+-]\d{4})$') {
+        Fail ("Invalid window format '{0}' - expected e.g. '17:00-21:00+0800'" -f $Window)
+    }
+    $startStr = $Matches[1]; $endStr = $Matches[2]; $offset = $Matches[3]
+    $offHours = [int]$offset.Substring(0, 3)
+    $offMin = [int]$offset.Substring(3, 2) * [Math]::Sign($offHours)
+    $local = $Now.ToUniversalTime().AddHours($offHours).AddMinutes($offMin)
+    $nowMin = $local.Hour * 60 + $local.Minute
+    $startMin = ([int]$startStr.Split(':')[0]) * 60 + [int]$startStr.Split(':')[1]
+    $endMin = ([int]$endStr.Split(':')[0]) * 60 + [int]$endStr.Split(':')[1]
+    $inWindow = if ($startMin -le $endMin) { ($nowMin -ge $startMin -and $nowMin -lt $endMin) }
+                 else { ($nowMin -ge $startMin -or $nowMin -lt $endMin) }   # overnight window
+    return @{ InWindow = $inWindow; LocalNow = $local; Window = $Window }
+}
+
 function Find-UupBuild {
     param(
         [Parameter(Mandatory)][string]$Spec,

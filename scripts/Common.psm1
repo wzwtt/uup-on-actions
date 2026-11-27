@@ -506,7 +506,15 @@ function Test-RingEntryMatchesCategory {
     $core = $core -replace '-(beta|experimental)$', ''
     if (-not $core) { return $false }
 
-    if ($Title -notmatch ('(?i)\b' + [regex]::Escape($core) + '\b')) { return $false }
+    $coreMatched = $Title -match ('(?i)\b' + [regex]::Escape($core) + '\b')
+    if (-not $coreMatched -and $family -eq 'server') {
+        # Server builds carry marketing years rather than version cores:
+        # the 24h2 branch is "Windows Server 2025", the 22h2 branch is
+        # "Windows Server 2022".
+        $year = switch ($core) { '24h2' { '2025' } '22h2' { '2022' } default { $null } }
+        if ($year) { $coreMatched = $Title -match ('(?i)\b' + $year + '\b') }
+    }
+    if (-not $coreMatched) { return $false }
     switch ($family) {
         'w11'    { if ($Title -notmatch '^Windows 11\b') { return $false } }
         'w10'    { if ($Title -notmatch '^Windows 10\b') { return $false } }

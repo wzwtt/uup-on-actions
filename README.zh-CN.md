@@ -86,10 +86,10 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 | `w11-25h2-beta` / `w11-25h2` | Windows 11 25H2，测试 / 稳定 |
 | `w11-24h2-beta` / `w11-24h2` | Windows 11 24H2，测试 / 稳定 |
 | `w11-23h2` / `w11-22h2` / `w11-21h2` | Windows 11 23H2 / 22H2 / 21H2 |
-| `server-24h2` / `server-23h2` | Windows Server，按发布年度 |
+| `server-24h2` / `server-23h2` / `server-22h2` / `server-21h2` | Windows Server 分支，按版本——24H2（Windows Server 2025）、23H2、22H2（Azure Stack HCI）、21H2（Windows Server 2022） |
 | `w10-22h2` / `w10-21h2` / `w10-1809` | Windows 10 22H2 / 21H2 / 1809 |
 
-当前仅两个分类不提供完整构建，已从表中排除：`server-22h2` 与 `server-21h2`。其目录条目仅剩服务性内容（累积更新与 .NET 更新）——Server 分支转入累积通道后不再重新同步功能更新条目；Windows 10 分支则不同，其功能更新条目仍在持续刷新。对被排除分类的构建 spec 将在解析阶段失败并明确报告跳过的服务性条目数；这些分支的构建仍可在目录条目尚存时以构建号或 GUID 指定。
+全部 Server 分支分类均提供完整构建，其标题形式因分支而异。24H2 分支的完整构建以 “Windows Server 2025 …” 命名；23H2 分支对同一构建同时列出 “Windows Server, version 23H2 …” 与 “Feature update to Azure Stack HCI …” 两条目；21H2 与 22H2 分支的完整构建以功能更新形式命名——“Feature update to Microsoft server operating system, version 21H2 …”（21H2，另有并行的 Azure Stack HCI 条目）与 “Feature update to Azure Stack HCI, version 22H2 …”（22H2）——与 Windows 10 客户端分支一致。若某分类的条目最终仅剩服务性内容，则不再提供可下载的完整构建；对其的构建 spec 将在解析阶段失败并明确报告跳过的服务性条目数。
 
 ### `arch`
 

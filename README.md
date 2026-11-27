@@ -74,9 +74,9 @@ Rings accepted by the `<ring>` and `<category>@<ring>` forms (uupdump fetchupd.p
 | `beta` | Beta channel | — |
 | `canary` | Canary channel | — |
 
-The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected. Full builds are identified by their titles (beginning with "Windows 11", "Windows 10" or "Windows Server"); servicing entries — cumulative and .NET updates, critical OOBE updates, server hotpatches — are excluded. For the `<category>@<ring>` form, the product-line match applies to the version designation in the entry title; insider ring entries whose titles carry no version designation are therefore matched by the bare `<ring>` form only.
+The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected. Full builds are identified by their titles (beginning with "Windows 11", "Windows 10", "Windows Server", or "Feature update to …"); servicing entries — cumulative and .NET updates, critical OOBE updates, server hotpatches — are excluded. For the `<category>@<ring>` form, the product-line match applies to the version designation in the entry title; insider ring entries whose titles carry no version designation are therefore matched by the bare `<ring>` form only.
 
-Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Full builds appear under two title families — entries beginning with "Windows 11 / 10 / Server" and entries beginning with "Feature update to Windows …", the form the catalogue uses for the Windows 10 branches (e.g. `Feature update to Windows 10, version 1809 (17763.9487) amd64`). The table is verified by the catalogue health probe (`scripts/Probe-UupCategories.ps1`; last verified 2026-11-27):
+Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Full builds appear under two title families — entries beginning with "Windows 11 / 10 / Server", and entries beginning with "Feature update to <product line>", the form the catalogue uses for branches whose full builds are re-synced as feature updates: the Windows 10 client branches (e.g. `Feature update to Windows 10, version 1809 (17763.9487) amd64`), the Windows Server branches (e.g. `Feature update to Microsoft server operating system, version 21H2 (20348.5870) amd64`) and Azure Stack HCI (e.g. `Feature update to Azure Stack HCI, version 22H2 (20349.3692) amd64`). The table is verified by the catalogue health probe (`scripts/Probe-UupCategories.ps1`; last verified 2026-11-27):
 
 | Category | Product line |
 |---|---|
@@ -86,10 +86,10 @@ Categories correspond to the filter on the uupdump Downloads page (that page is 
 | `w11-25h2-beta` / `w11-25h2` | Windows 11 25H2, beta / stable |
 | `w11-24h2-beta` / `w11-24h2` | Windows 11 24H2, beta / stable |
 | `w11-23h2` / `w11-22h2` / `w11-21h2` | Windows 11 23H2 / 22H2 / 21H2 |
-| `server-24h2` / `server-23h2` | Windows Server, by release year |
+| `server-24h2` / `server-23h2` / `server-22h2` / `server-21h2` | Windows Server branches by version — 24H2 (Windows Server 2025), 23H2, 22H2 (Azure Stack HCI), 21H2 (Windows Server 2022) |
 | `w10-22h2` / `w10-21h2` / `w10-1809` | Windows 10 22H2 / 21H2 / 1809 |
 
-Two categories currently provide no full builds and are excluded from the table: `server-22h2` and `server-21h2`. Their catalogue entries are servicing-only (cumulative and .NET updates) — the server branches do not re-sync feature-update entries after their servicing moves to the cumulative channel, unlike the Windows 10 branches, whose feature-update entries keep being refreshed. A build spec against such a category fails at resolution with an explicit message naming the skipped servicing-entry count; builds of those branches can still be requested by build number or GUID while their entries remain in the catalogue.
+All server-branch categories provide full builds; their title forms differ by branch. The 24H2 branch titles its full builds "Windows Server 2025 …"; the 23H2 branch lists, per build, both a "Windows Server, version 23H2 …" entry and a "Feature update to Azure Stack HCI …" entry; the 21H2 and 22H2 branches title their full builds as feature updates — "Feature update to Microsoft server operating system, version 21H2 …" (alongside parallel Azure Stack HCI entries) and "Feature update to Azure Stack HCI, version 22H2 …" — exactly like the Windows 10 client branches. A category whose entries eventually become servicing-only yields no downloadable full build; a build spec against it then fails at resolution with an explicit message naming the skipped servicing-entry count.
 
 ### `arch`
 

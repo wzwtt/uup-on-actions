@@ -11,7 +11,8 @@ The pipeline operates entirely within a GitHub Actions Windows runner:
 1. A build is resolved against the uupdump.net catalogue — either the newest full build, or one specified by category, build number, GUID, or URL.
 2. The uupdump download package is generated at runtime by submitting the corresponding form parameters to the uupdump generation endpoint, then patched for unattended execution (elevation check and interactive prompts removed).
 3. The UUP payload is retrieved from Microsoft delivery servers with aria2 and converted into a complete ISO image.
-4. The image is verified (presence, minimum size, SHA-256) and published.
+4. The image is verified before publication: it is mounted and checked for a complete boot chain, and the image store is confirmed to carry exactly the image entries the edition selection implies; then presence, minimum size and SHA-256 are checked.
+5. The release is created and the image is mirrored.
 
 The ISO image is transferred to the buzzheavier.com file hosting service as a single file; the GitHub release records the checksum, structured build metadata, and the download location. A scheduled monitoring workflow resolves configurable uupdump categories within a daily time window and dispatches builds for newly published builds; its configuration is version-controlled on a dedicated orphan branch (`watch`), so that the history of `main` remains confined to pipeline code. The repository contains pipeline code only; no build data or downloaded payloads are stored in git.
 
@@ -37,6 +38,7 @@ Produced images are intended for evaluation purposes only; see the [Legal notice
 |---|---|---|
 | `.github/workflows/build-iso.yml` | manual (`workflow_dispatch`), or invoked by the watch workflow | A single build; all build parameters are exposed as inputs. |
 | `.github/workflows/watch.yml` | `schedule` (two-hour interval) and manual | Resolves monitored uupdump targets, dispatches one concurrent build job per new target, and summarises the outcomes once all builds finish. |
+| `.github/workflows/ci.yml` | `push`/`pull_request` on code changes; manual; weekly `schedule` | Runs the Pester unit-test suite; the weekly schedule (and manual dispatch with the `catalogue` input) additionally probes which catalogue categories currently provide full builds. |
 
 ```
 workflow_dispatch ─┐
@@ -74,18 +76,19 @@ Rings accepted by the `<ring>` and `<category>@<ring>` forms (uupdump fetchupd.p
 
 The ring query returns the current synchronisation state of the respective channel; among the returned entries the newest full build is selected. Full builds are identified by their titles (beginning with "Windows 11", "Windows 10" or "Windows Server"); servicing entries — cumulative and .NET updates, critical OOBE updates, server hotpatches — are excluded. For the `<category>@<ring>` form, the product-line match applies to the version designation in the entry title; insider ring entries whose titles carry no version designation are therefore matched by the bare `<ring>` form only.
 
-Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). Current values:
+Categories correspond to the filter on the uupdump Downloads page (that page is authoritative as categories evolve). The table lists the categories that currently provide downloadable full builds, as verified by the catalogue health probe (`scripts/Probe-UupCategories.ps1`; last verified 2026-11-26):
 
-| Category | Branch |
+| Category | Product line |
 |---|---|
-| `future` | Development channel |
+| `future` | Windows 11 Insider Preview, future platform (29xxx series) |
 | `w11-26h2-experimental` | Windows 11 26H2, experimental channel |
 | `w11-26h2` / `w11-26h1` | Windows 11 26H2 / 26H1 |
 | `w11-25h2-beta` / `w11-25h2` | Windows 11 25H2, beta / stable |
 | `w11-24h2-beta` / `w11-24h2` | Windows 11 24H2, beta / stable |
 | `w11-23h2` / `w11-22h2` / `w11-21h2` | Windows 11 23H2 / 22H2 / 21H2 |
-| `server-24h2` / `server-23h2` / `server-22h2` / `server-21h2` | Windows Server, by release year |
-| `w10-22h2` / `w10-21h2` / `w10-1809` | Windows 10 22H2 / 21H2 / 1809 |
+| `server-24h2` / `server-23h2` | Windows Server, by release year |
+
+Categories that currently provide no full builds are excluded from the table: `server-22h2`, `server-21h2`, `w10-22h2`, `w10-21h2` and `w10-1809`. Their catalogue entries are servicing-only (cumulative and .NET updates): the catalogue keeps full-build entries only while Microsoft's servers synchronise them, and full builds of retired product lines are no longer synchronised. A build spec against such a category fails at resolution with an explicit message naming the skipped servicing-entry count; builds of retired product lines can still be requested by build number or GUID while their entries remain in the catalogue.
 
 ### `arch`
 
@@ -338,6 +341,8 @@ Peak disk usage on the runner is 25–35 GB (payload, image, temporary files); f
 | Cloudflare challenge on the catalogue page | Backoff and retry; on persistent failure the run terminates with remediation guidance (direct GUID/URL input bypasses the catalogue page); watch cycles skip the affected target. |
 | Conversion failure | The download script is re-executed once; aria2 resumes from partial data. |
 | ISO below 1 GiB | Rejected prior to publication as a suspected incomplete conversion. |
+| Structurally broken image | The finished ISO is mounted before publication; missing boot files or an image store whose entry count does not match the edition selection terminate the run. |
+| Split volumes (`release+buzzheavier`) | The archive is integrity-tested with `7z t` before it is attached; a corrupt archive is not published. |
 | Mirror upload failure | The release is still created; the run summary records the error. The upload response digest is compared against the local digest to verify transfer integrity. |
 | Invalid watch configuration file | The cycle terminates with the parser error; built-in defaults apply when the branch or file is absent. |
 | Any step failure | `aria2_download.log` and `ConvertConfig.ini` are attached as an artifact retained for 7 days. |
@@ -348,13 +353,16 @@ Peak disk usage on the runner is 25–35 GB (payload, image, temporary files); f
 main branch:
 .github/workflows/build-iso.yml    Build workflow (manual and called)
 .github/workflows/watch.yml        Scheduled monitoring workflow
+.github/workflows/ci.yml           Unit tests; weekly catalogue health probe
 scripts/Common.psm1                Logging, HTTP retry, option schema, tag computation, catalogue resolution
 scripts/Resolve-UupBuild.ps1      Stage 1 — input resolution and tag computation
 scripts/New-UupPackage.ps1        Stage 2 — package generation, patching, dependency pre-fetch, pre-flight
 scripts/Invoke-UupConvert.ps1     Stage 3 — payload download, conversion, verification
-scripts/Publish-UupIso.ps1        Stage 4 — digest, mirror upload, release creation, summary
+scripts/Publish-UupIso.ps1        Stage 4 — image verification, digest, mirror upload, release creation, summary
 scripts/Watch-UupBuilds.ps1       Scheduled cycle — target resolution and matrix planning
 scripts/Summarise-UupCycle.ps1    Scheduled cycle — outcome aggregation after the builds
+scripts/Probe-UupCategories.ps1   Catalogue health probe — which categories still provide full builds
+tests/Common.Tests.ps1            Pester unit tests for the pure logic in Common.psm1
 
 watch branch (orphan):
 uup-watch.json                     Scheduled-monitoring configuration

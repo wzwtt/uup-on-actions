@@ -11,7 +11,8 @@
 1. 依据 uupdump.net 目录解析目标构建——可为最新的完整构建，或按分类、构建号、GUID、URL 指定。
 2. 在运行时向 uupdump 生成端点提交相应表单参数以生成下载包，并对脚本进行无人值守化修补（移除提权检查与交互提示）。
 3. 使用 aria2 从微软分发服务器获取 UUP 文件集，并转换为完整 ISO 镜像。
-4. 校验镜像（存在性、最小体积、SHA-256）并发布。
+4. 发布前校验镜像：挂载并检查引导链完整性，确认镜像库包含的镜像条目数与所选版本一致；再检查存在性、最小体积与 SHA-256。
+5. 创建 Release 并镜像发布。
 
 ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；GitHub Release 记录校验值、结构化构建元数据及下载位置。定时监测工作流在每日设定时间窗口内解析受监测的 uupdump 分类，并对新出现的构建派发构建任务；其配置受版本控制并存放于专用孤儿分支（`watch`），使 `main` 分支的历史仅包含流水线代码。仓库不存放任何构建数据或已下载的载荷。
 
@@ -37,6 +38,7 @@ ISO 镜像以单一文件形式传输至 buzzheavier.com 文件托管服务；Gi
 |---|---|---|
 | `.github/workflows/build-iso.yml` | 手动（`workflow_dispatch`）或由监测工作流调用 | 单次构建；全部构建参数以输入形式开放。 |
 | `.github/workflows/watch.yml` | `schedule`（两小时间隔）及手动 | 解析受监测的 uupdump 目标，为每个新目标派发一个并发构建作业，并在全部构建结束后汇总结果。 |
+| `.github/workflows/ci.yml` | 代码变更时随 `push`/`pull_request`；手动；每周 `schedule` | 运行 Pester 单元测试；每周定时（以及携 `catalogue` 输入的手动触发）额外探测哪些分类当前仍提供完整构建。 |
 
 ```
 手动触发 ─┐
@@ -74,18 +76,19 @@ spec 显式指定产品线或更新通道；“最新”内在于形式本身—
 
 通道查询返回相应通道当前的同步更新状态；在返回条目中选取最新的完整构建。完整构建依标题判定（以 "Windows 11"、"Windows 10" 或 "Windows Server" 开头）；服务性条目——累积更新、.NET 更新、Critical OOBE 更新、服务器热修补——被排除。`<category>@<ring>` 形式按条目标题中的版本号判定产品线匹配；标题不含版本号的 Insider 通道条目仅适用于 `<ring>` 形式。
 
-分类与 uupdump 下载页的筛选器一致（该页面为权威来源，分类可能随时间演进）。当前取值：
+分类与 uupdump 下载页的筛选器一致（该页面为权威来源，分类可能随时间演进）。下表列出当前仍提供可下载完整构建的分类，经目录健康探测（`scripts/Probe-UupCategories.ps1`）核实；最近核实日期 2026-11-26：
 
 | 分类 | 分支 |
 |---|---|
-| `future` | 开发通道 |
+| `future` | Windows 11 Insider Preview，未来平台（29xxx 系列） |
 | `w11-26h2-experimental` | Windows 11 26H2，实验通道 |
 | `w11-26h2` / `w11-26h1` | Windows 11 26H2 / 26H1 |
 | `w11-25h2-beta` / `w11-25h2` | Windows 11 25H2，测试 / 稳定 |
 | `w11-24h2-beta` / `w11-24h2` | Windows 11 24H2，测试 / 稳定 |
 | `w11-23h2` / `w11-22h2` / `w11-21h2` | Windows 11 23H2 / 22H2 / 21H2 |
-| `server-24h2` / `server-23h2` / `server-22h2` / `server-21h2` | Windows Server，按发布年度 |
-| `w10-22h2` / `w10-21h2` / `w10-1809` | Windows 10 22H2 / 21H2 / 1809 |
+| `server-24h2` / `server-23h2` | Windows Server，按发布年度 |
+
+当前不再提供完整构建的分类已从表中排除：`server-22h2`、`server-21h2`、`w10-22h2`、`w10-21h2` 与 `w10-1809`。这些分类的目录条目仅剩服务性内容（累积更新与 .NET 更新）：目录仅在微软服务器仍同步完整构建时保留此类条目，而已停止支持的产品线不再被同步。对被排除分类的构建 spec 将在解析阶段失败并明确报告跳过的服务性条目数；这些产品线的构建仍可在目录条目尚存时以构建号或 GUID 指定。
 
 ### `arch`
 
@@ -338,6 +341,8 @@ tag_suffix=test
 | 目录页出现 Cloudflare 质询 | 退避重试；持续失败时运行终止并给出处置指引（GUID/URL 直输可绕过目录页）；监测周期跳过受影响目标。 |
 | 转换失败 | 重新执行一次下载脚本；aria2 自断点续传。 |
 | ISO 低于 1 GiB | 视为疑似不完整转换，在发布前拒绝。 |
+| 结构性损坏的镜像 | 发布前挂载成品 ISO；引导文件缺失或镜像库条目数与所选版本不一致时终止运行。 |
+| 分卷（`release+buzzheavier`） | 附着前先以 `7z t` 测试分卷完整性；损坏的分卷不予发布。 |
 | 镜像上传失败 | Release 照常创建；运行摘要记录错误。上传响应中的摘要与本地摘要比对以验证传输完整性。 |
 | 监测配置文件非法 | 该周期以解析错误终止；分支或文件缺失时采用内置默认值。 |
 | 任意步骤失败 | `aria2_download.log` 与 `ConvertConfig.ini` 以保留 7 天的工件形式附带。 |
@@ -348,13 +353,16 @@ tag_suffix=test
 main 分支：
 .github/workflows/build-iso.yml    构建工作流（手动与被调用）
 .github/workflows/watch.yml        定时监测工作流
+.github/workflows/ci.yml           单元测试；每周目录健康探测
 scripts/Common.psm1                日志、HTTP 重试、选项模式、标签计算、目录解析
 scripts/Resolve-UupBuild.ps1      阶段一——输入解析与标签计算
 scripts/New-UupPackage.ps1        阶段二——下载包生成、修补、依赖预取、预检
 scripts/Invoke-UupConvert.ps1     阶段三——载荷下载、转换、校验
-scripts/Publish-UupIso.ps1        阶段四——摘要、镜像上传、Release 创建、摘要输出
+scripts/Publish-UupIso.ps1        阶段四——镜像验证、摘要、镜像上传、Release 创建、摘要输出
 scripts/Watch-UupBuilds.ps1       定时周期——目标解析与矩阵规划
 scripts/Summarise-UupCycle.ps1    定时周期——构建结束后的结果汇总
+scripts/Probe-UupCategories.ps1   目录健康探测——哪些分类仍提供完整构建
+tests/Common.Tests.ps1            Common.psm1 纯逻辑的 Pester 单元测试
 
 watch 分支（孤儿）：
 uup-watch.json                     定时监测配置

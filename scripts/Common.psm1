@@ -711,7 +711,7 @@ function Find-UupBuild {
     }
 
     if (-not $picked) {
-        Fail ("No full '{0}' build found for arch '{1}' ({2} servicing entries skipped). The category may only contain updates, or the arch is unavailable." -f $spec, $archN, $skipped)
+        Fail ("No full '{0}' build found for arch '{1}' ({2} servicing entries skipped). The category currently lists only servicing entries (updates) and provides no downloadable full build - Microsoft no longer synchronises full builds of retired product lines. See the category table in the README, or request a specific build by build number or GUID." -f $spec, $archN, $skipped)
     }
     if (-not $picked.build) {
         Fail ("Could not extract a build number from title '{0}'" -f $picked.title)

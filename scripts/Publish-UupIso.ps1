@@ -5,15 +5,18 @@ create the GitHub release (checksums, manifest, optional split volumes),
 and write the job summary.
 
 .DESCRIPTION
+  0. The finished ISO is mounted and verified: boot files present, and the
+     image store carries exactly the number of image entries the selection
+     implies (base plus virtual editions).
   1. SHA-256 of the produced ISO.
   2. With mirrors=release+buzzheavier: 7z split volumes of at most 1900 MB
-     are produced and attached as release assets (below the GitHub per-asset
-     size limit).
+      are produced, their integrity is tested with `7z t`, and they are
+      attached as release assets (below the GitHub per-asset size limit).
   3. Whole-file PUT upload to https://w.buzzheavier.com/<filename>; the
-     response digest is compared against the local digest. Mirror failure
-     does not fail the build - the release is still created.
+      response digest is compared against the local digest. Mirror failure
+      does not fail the build - the release is still created.
   4. GitHub release via `gh` with SHA256SUMS.txt, manifest.json and, when
-     applicable, the split volumes.
+      applicable, the split volumes.
 #>
 param(
     [string]$IsoPath = ''
@@ -34,6 +37,57 @@ if (-not $IsoPath) {
 }
 if (-not (Test-Path -LiteralPath $IsoPath)) { Fail "ISO not found at $IsoPath" }
 $iso = Get-Item -LiteralPath $IsoPath
+
+# --- 0. ISO integrity validation ----------------------------------------------
+# A conversion can end in a structurally broken ISO (truncated store, missing
+# boot files) while the process itself exits successfully; the digest alone
+# would not notice. The image is therefore mounted and inspected before
+# anything is published.
+function Test-IsoIntegrity {
+    param([Parameter(Mandatory)][string]$Path, [AllowNull()]$State)
+    $mounted = $null
+    try {
+        try { $mounted = Mount-DiskImage -ImagePath $Path -Access ReadOnly -PassThru -ErrorAction Stop } catch {
+            Fail ("The ISO could not be mounted for verification: {0}" -f $_.Exception.Message)
+        }
+        $vol = Get-Volume -DiskImage $mounted -ErrorAction SilentlyContinue
+        if (-not $vol -or -not $vol.DriveLetter) { Fail 'The mounted ISO exposes no readable volume' }
+        $root = ('{0}:\' -f $vol.DriveLetter)
+
+        # boot chain
+        foreach ($required in @('bootmgr', 'efi\boot', 'sources\boot.wim')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $root $required))) {
+                Fail ("The ISO lacks the required boot entry '{0}' - the conversion produced a non-bootable image" -f $required)
+            }
+        }
+        $efiBoot = @((Get-ChildItem -LiteralPath (Join-Path $root 'efi\boot') -File -ErrorAction SilentlyContinue) |
+            Where-Object { $_.Name -match '^boot(x64|aa64)\.efi$' })
+        if ($efiBoot.Count -eq 0) { Fail 'The ISO lacks an EFI boot loader (efi\boot\boot*.efi)' }
+
+        # image store and image count
+        $store = Get-ChildItem -LiteralPath (Join-Path $root 'sources') -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^install\.(wim|esd|swm)$' } | Select-Object -First 1
+        if (-not $store) { Fail 'The ISO carries no sources\install.wim/.esd/.swm image store' }
+        $dismOut = & dism.exe /English /Get-WimInfo ("/WimFile:{0}" -f $store.FullName) 2>&1
+        $indices = [regex]::Matches(($dismOut | Out-String), '(?m)^Index\s*:\s*(\d+)')
+        if ($indices.Count -eq 0) { Fail ("DISM could not read the image store: {0}" -f (($dismOut | Out-String).Trim())) }
+        $imageCount = [int]($indices | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Maximum).Maximum
+        $expected = 0
+        if ($State) {
+            $expected = @($State.editions).Count + @($State.virtualEditions).Count
+        }
+        Write-Log ("ISO inspection: image store '{0}', {1} image entries, boot chain present" -f $store.Name, $imageCount)
+        if ($expected -gt 0 -and $imageCount -ne $expected) {
+            Fail ("The image store carries {0} image entries but the selection implies {1} (base editions plus virtual editions) - some editions are missing from the image" -f $imageCount, $expected)
+        }
+        return $imageCount
+    } finally {
+        if ($mounted) { $null = Dismount-DiskImage -ImagePath $Path -ErrorAction SilentlyContinue }
+    }
+}
+
+$imageCount = Test-IsoIntegrity -Path $IsoPath -State $state
+Write-LogOk ("ISO integrity check passed ({0} image entries)" -f $imageCount)
 
 # --- 1. hash ----------------------------------------------------------------------
 Write-Log 'Computing SHA-256 of the ISO...'
@@ -62,6 +116,9 @@ if ($state.mirrors -eq 'release+buzzheavier') {
     if ($LASTEXITCODE -ne 0) { Fail "7z volume creation failed with exit code $LASTEXITCODE" }
     $volumePaths = @(Get-ChildItem -LiteralPath $outDir -Filter (($iso.BaseName) + '.7z.*') -File | Sort-Object Name)
     if ($volumePaths.Count -eq 0) { Fail '7z reported success but no volumes were created' }
+    & $sevenZip t (Join-Path $outDir ($iso.BaseName + '.7z.001')) 2>&1 | ForEach-Object { Write-Log ("7z t: {0}" -f $_) }
+    if ($LASTEXITCODE -ne 0) { Fail "7z reported the split archive as corrupt (exit code $LASTEXITCODE) - not publishing the volumes" }
+    Write-LogOk 'Split archive integrity verified with 7z t'
     $volTotal = ($volumePaths | Measure-Object -Sum Length).Sum
     Write-LogOk ("Created {0} volume(s), {1} GB total" -f $volumePaths.Count, [Math]::Round($volTotal / 1GB, 2))
 }
@@ -140,6 +197,7 @@ $manifest = [ordered]@{
     isoName        = $iso.Name
     isoSizeBytes   = $iso.Length
     isoSha256      = $sha
+    imageEntries   = $imageCount
     buzzheavier     = if ($buzzUrl) { @{ url = $buzzUrl; uploadedAt = $buzzUploadedAt } } else { $null }
     releaseVolumes  = @(if ($volumePaths.Count -gt 0) {
         foreach ($v in $volumePaths) { [ordered]@{ name = $v.Name; sizeBytes = $v.Length; sha256 = (Get-FileSha256 $v.FullName) } }
@@ -173,6 +231,7 @@ $body += ('| Editions | {0} |' -f (@($state.editions) -join ', '))
 $body += ('| Virtual editions | {0} |' -f ($(if (@($state.virtualEditions).Count) { @($state.virtualEditions) -join ', ' } else { '-' })))
 $body += ('| ISO | `{0}` ({1} GB) |' -f $iso.Name, $sizeGb)
 $body += ('| Release state | {0} |' -f $releaseState)
+$body += ('| Image entries | {0} |' -f $imageCount)
 $body += ('| SHA-256 | `{0}` |' -f $sha)
 $body += ''
 $body += '## Download'

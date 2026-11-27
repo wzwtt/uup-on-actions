@@ -7,17 +7,17 @@ Runs inside the scheduled `watch.yml` job (or manual watch dispatch):
   1. Reads the monitoring configuration from the file supplied by the
      workflow (fetched from the `watch` orphan branch); a missing file or
      branch falls back to the built-in defaults:
-        { "window": "17:00-21:00+0800",
-          "targets": [ { "build": "retail", "arch": "amd64",
+        { "targets": [ { "build": "retail", "arch": "amd64",
                          "language": "zh-cn", "editions": "all",
                          "virtual_editions": "all",
                          "release_state": "release" }, ... ] }
-  2. Checks the local time is inside the daily window.
-  3. For every target resolves the build spec (category / ring / category@ring)
+     How often the catalogue is checked is a property of the workflow's cron
+     cadence alone - there is no time-window gating.
+  2. For every target resolves the build spec (category / ring / category@ring)
      to a concrete build and
      computes its tag. Targets whose release tag already exists are skipped
      (idempotent - no state files needed).
-  4. Emits a GitHub Actions matrix: each queued target becomes its own build
+  3. Emits a GitHub Actions matrix: each queued target becomes its own build
      job and therefore runs on its own runner. All of them start together, so
      concurrency is the matrix size itself - there is no parallelism setting.
 
@@ -27,7 +27,6 @@ fail because of transient upstream issues. An invalid configuration file
 however terminates the cycle, so that misconfiguration is surfaced.
 #>
 param(
-    [string]$BypassWindow = 'false',
     [string]$ConfigPath = ''
 )
 
@@ -39,7 +38,6 @@ Write-Section 'Watch: check for new builds'
 
 # --- default config -------------------------------------------------------------
 $defaultConfig = [ordered]@{
-    window      = '17:00-21:00+0800'
     targets     = @(
         @{ build = 'retail'; arch = 'amd64'; language = 'zh-cn'; editions = 'all'; virtual_editions = 'all'; release_state = 'release' },
         @{ build = 'retail'; arch = 'amd64'; language = 'en-us'; editions = 'all'; virtual_editions = 'all'; release_state = 'release' }
@@ -62,25 +60,6 @@ if ($ConfigPath) {
     }
 }
 if (-not $cfg) { $cfg = $defaultConfig }
-
-# --- time window -----------------------------------------------------------------
-if (ConvertTo-Bool $BypassWindow) {
-    Write-Log 'Window check bypassed (manual test run)'
-} else {
-    $win = [string]$cfg.window
-    $gate = Test-UupWindow -Window $win -Now (Get-Date)
-    $now = $gate.LocalNow
-    Write-Log ("Config source: {0}; window {1} (current local time {2:HH:mm})" -f $cfgSource, $win, $now)
-    if (-not $gate.InWindow) {
-        Write-Log 'Outside the daily window - nothing to do.'
-        Write-LogWarn ("No build was dispatched: the cycle is outside the activation window {0} and the current local time is {1:HH:mm}. Scheduled cycles only act inside the window; a manual dispatch passes bypass_window=true for this by default." -f $win, $now)
-        Write-Host ("::warning::Outside the activation window {0} (local time {1:HH:mm}) - no build dispatched. Manual dispatch bypasses the window by default." -f $win, $now)
-        Write-ActionOutput -Key 'count' -Value '0'
-        Write-ActionOutput -Key 'matrix' -Value '{"include":[]}'
-        Write-Summary ("## Watch`n`nNo build was dispatched: the cycle ran outside the configured activation window.`n`n| | |`n|---|---|`n| Window | {0} |`n| Current local time | {1:HH:mm} |`n`nScheduled cycles only act inside the window. A manual run bypasses it unless `bypass_window` is set to false.`n" -f $win, $now)
-        exit 0
-    }
-}
 
 # --- resolve targets ----------------------------------------------------------------
 $repo = $env:GITHUB_REPOSITORY

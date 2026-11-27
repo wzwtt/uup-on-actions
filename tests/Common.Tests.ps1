@@ -81,25 +81,9 @@ Describe 'Test-RingEntryMatchesCategory' {
         Test-RingEntryMatchesCategory -Title 'Windows 11 Insider Preview (29712.1000) arm64' -CategorySlug 'w11-24h2' | Should -BeFalse
         Test-RingEntryMatchesCategory -Title 'Windows 11 Insider Preview Feature Update (26220.1) amd64' -CategorySlug 'w11-25h2-beta' | Should -BeFalse
     }
-}
-
-Describe 'Test-UupWindow' {
-    BeforeAll {
-        $ref = Get-Date '2026-11-26T09:00:00Z'   # 17:00 +0800
-        $late = Get-Date '2026-11-26T15:30:00Z'  # 23:30 +0800
-        $early = Get-Date '2026-11-26T17:00:00Z' # 01:00 +0800 (next day)
-    }
-    It 'accepts the boundary start and rejects the boundary end' {
-        (Test-UupWindow -Window '17:00-21:00+0800' -Now $ref).InWindow | Should -BeTrue
-        (Test-UupWindow -Window '17:00-21:00+0800' -Now ($ref.AddHours(4))).InWindow | Should -BeFalse
-    }
-    It 'supports overnight windows' {
-        (Test-UupWindow -Window '22:00-06:00+0800' -Now $late).InWindow | Should -BeTrue
-        (Test-UupWindow -Window '22:00-06:00+0800' -Now $early).InWindow | Should -BeTrue
-        (Test-UupWindow -Window '22:00-06:00+0800' -Now $ref).InWindow | Should -BeFalse
-    }
-    It 'fails on a malformed window instead of silently ignoring it' {
-        { Test-UupWindow -Window '17-21+0800' -Now $ref } | Should -Throw
+    It 'matches the Feature-update title form of the Windows 10 branches' {
+        Test-RingEntryMatchesCategory -Title 'Feature update to Windows 10, version 1809 (17763.9487) amd64' -CategorySlug 'w10-1809' | Should -BeTrue
+        Test-RingEntryMatchesCategory -Title 'Feature update to Windows 10, version 22H2 (19045.7850) amd64' -CategorySlug 'w10-22h2' | Should -BeTrue
     }
 }
 
